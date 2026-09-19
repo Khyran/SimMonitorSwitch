@@ -86,3 +86,7 @@ Use the *Open configuration file* menu entry. The file is located at `%AppData%\
 - After switching on, it can take 1 to 3 seconds for Windows to bring up the picture. This is normal.
 - With several sim monitors, if one of them is unplugged or powered off, the app still switches the others on and off. The tray status then shows *PARTLY ON (x/y)*.
 - The monitors themselves must stay powered on and connected. The app only detaches them from the desktop in Windows; it does not switch them off physically.
+
+## License
+
+Free for personal, non-commercial use under the [PolyForm Noncommercial License 1.0.0](LICENSE). Selling the software or using it commercially is not permitted. The source code is available, but this is not an open-source license.
