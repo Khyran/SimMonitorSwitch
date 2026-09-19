@@ -102,6 +102,9 @@ internal static class Loc
         ["select.readFailed"]   = ("Could not read the monitor's current settings.", "Aktuelle Einstellungen des Monitors konnten nicht gelesen werden."),
         ["select.added"]        = ("Sim monitor added: {0} ({1}x{2} @ {3} Hz).", "Sim-Monitor hinzugefügt: {0} ({1}x{2} @ {3} Hz)."),
         ["select.removed"]      = ("Sim monitor removed: {0}.", "Sim-Monitor entfernt: {0}."),
+        ["select.removedOn"]    = ("Sim monitor switched back on and removed: {0}.", "Sim-Monitor wieder eingeschaltet und entfernt: {0}."),
+        ["select.removeFailed"] = ("Could not switch {0} back on, so it was not removed. {1}",
+                                   "{0} konnte nicht wieder eingeschaltet werden und wurde deshalb nicht entfernt. {1}"),
 
         // --- Monitor: Einschalten -----------------------------------------
         ["enable.notFound.one"]  = ("Sim monitor not found. Is it connected and switched on?", "Sim-Monitor nicht gefunden. Ist er angeschlossen und eingeschaltet?"),

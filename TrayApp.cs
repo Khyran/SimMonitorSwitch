@@ -206,7 +206,7 @@ internal sealed class TrayApp : ApplicationContext
             string res = entry.Mode is { } mode ? $"{mode.Width}x{mode.Height}" : "?";
             string state = Loc.T(r.Found ? "select.off" : "select.missing");
             var item = new ToolStripMenuItem($"{label}  –  {dev}, {res}  {state}") { Checked = true };
-            item.Click += (_, _) => RemoveSimMonitor(entry);
+            item.Click += async (_, _) => await RemoveSimMonitorAsync(entry);
             _selectMenu.DropDownItems.Add(item);
         }
 
@@ -223,9 +223,9 @@ internal sealed class TrayApp : ApplicationContext
                 Enabled = entry != null || !m.Primary,   // Hauptbildschirm darf nie als Sim-Monitor dienen
             };
             var captured = m;
-            item.Click += (_, _) =>
+            item.Click += async (_, _) =>
             {
-                if (entry != null) RemoveSimMonitor(entry);
+                if (entry != null) await RemoveSimMonitorAsync(entry);
                 else AddSimMonitor(captured);
             };
             _selectMenu.DropDownItems.Add(item);
@@ -243,11 +243,13 @@ internal sealed class TrayApp : ApplicationContext
         RefreshUi();
     }
 
-    private void RemoveSimMonitor(SimMonitorEntry entry)
+    /// <summary>Kann dauern: ist der Monitor gerade aus, wird er vor dem Entfernen erst wieder eingeschaltet.</summary>
+    private async Task RemoveSimMonitorAsync(SimMonitorEntry entry)
     {
-        var r = _monitor.Remove(entry);
-        Notify(Loc.T("notify.removed"), r.Message, ToolTipIcon.Info);
-        RefreshUi();
+        if (_busy) return;
+        var r = await RunAsync(() => _monitor.Remove(entry));
+        Notify(r.Ok ? Loc.T("notify.removed") : Loc.T("notify.error"), r.Message,
+            r.Ok ? ToolTipIcon.Info : ToolTipIcon.Error);
     }
 
     private void FillGamesMenu()
