@@ -15,7 +15,8 @@ public sealed class SavedMode
     public int BitsPerPel { get; set; } = 32;
 }
 
-public sealed class AppConfig
+/// <summary>Ein Sim-Monitor: wie er wiedergefunden wird und mit welchen Einstellungen er eingeschaltet wird.</summary>
+public sealed class SimMonitorEntry
 {
     /// <summary>Hardware-ID des Monitors, z. B. "MONITOR\GSM5B09". Bleibt auch nach Neustart stabil.</summary>
     public string? MonitorId { get; set; }
@@ -24,8 +25,28 @@ public sealed class AppConfig
     public string? LastDeviceName { get; set; }
 
     /// <summary>Anzeigename fuer das Tray-Menue.</summary>
+    public string? Label { get; set; }
+
+    public SavedMode? Mode { get; set; }
+}
+
+public sealed class AppConfig
+{
+    /// <summary>Alle Monitore, die zusammen ein- und ausgeschaltet werden.</summary>
+    public List<SimMonitorEntry> SimMonitors { get; set; } = new();
+
+    // Alte Felder (Version 1.0, nur ein Monitor). Werden beim Laden in SimMonitors uebernommen
+    // und danach nicht mehr geschrieben.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? MonitorId { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LastDeviceName { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? MonitorLabel { get; set; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public SavedMode? Mode { get; set; }
 
     /// <summary>Prozessnamen ohne ".exe". Wird einer davon gestartet, geht der Sim-Monitor an.</summary>
@@ -83,7 +104,9 @@ public sealed class AppConfig
             if (File.Exists(ConfigPath))
             {
                 var json = File.ReadAllText(ConfigPath);
-                return JsonSerializer.Deserialize<AppConfig>(json, JsonOptions) ?? new AppConfig();
+                var cfg = JsonSerializer.Deserialize<AppConfig>(json, JsonOptions) ?? new AppConfig();
+                cfg.MigrateLegacy();
+                return cfg;
             }
         }
         catch
@@ -91,6 +114,29 @@ public sealed class AppConfig
             // Kaputte Datei: mit Standardwerten weitermachen (Original bleibt liegen)
         }
         return new AppConfig();
+    }
+
+    /// <summary>Uebernimmt einen Monitor aus den alten Einzel-Feldern in die Liste.</summary>
+    private void MigrateLegacy()
+    {
+        SimMonitors ??= new();
+
+        if (SimMonitors.Count == 0
+            && (!string.IsNullOrEmpty(MonitorId) || !string.IsNullOrEmpty(LastDeviceName)))
+        {
+            SimMonitors.Add(new SimMonitorEntry
+            {
+                MonitorId = MonitorId,
+                LastDeviceName = LastDeviceName,
+                Label = MonitorLabel,
+                Mode = Mode,
+            });
+        }
+
+        MonitorId = null;
+        LastDeviceName = null;
+        MonitorLabel = null;
+        Mode = null;
     }
 
     /// <summary>Uebernimmt alle Werte einer frisch geladenen Konfiguration (fuer "Neu laden").</summary>

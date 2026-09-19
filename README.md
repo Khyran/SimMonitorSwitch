@@ -1,7 +1,7 @@
 # SimMonitorSwitch
 
-A small tray app for Windows 11 that activates your sim racing monitor only when you need it.
-While it is switched off, Windows no longer treats the monitor as part of the desktop, so no windows or mouse pointer end up on a screen you can't see.
+A small tray app for Windows 11 that activates your sim racing monitors only when you need them. It works with a single monitor or a multi-monitor setup (for example a triple-screen rig): all selected monitors are switched on and off together.
+While they are switched off, Windows no longer treats the monitors as part of the desktop, so no windows or mouse pointer end up on a screen you can't see.
 
 ## Building
 
@@ -19,15 +19,19 @@ If the target machine has no .NET runtime installed, use `--self-contained true`
 
 The app is available in English and German. By default it follows the Windows display language (German if Windows is set to German, English otherwise). To change it, right-click the tray icon, choose *Language*, and pick *English*, *Deutsch* or *Automatic*. The change applies immediately and is stored in the `Language` field of the config file.
 
-Menu entries are quoted below by their English names. In German they read: *Sim-Monitor auswählen*, *Mit Windows starten*, *Einschalten* / *Ausschalten*, *Automatisch bei Spielstart*, *Laufendes Programm als Spiel hinzufügen*, *Konfigurationsdatei öffnen*, *Konfiguration neu laden*, *Notfall: Alle Monitore erweitern (wie Win+P)*, *Log öffnen*, *Sprache*.
+Menu entries are quoted below by their English names. In German they read: *Sim-Monitore auswählen*, *Mit Windows starten*, *Einschalten* / *Ausschalten*, *Automatisch bei Spielstart*, *Laufendes Programm als Spiel hinzufügen*, *Konfigurationsdatei öffnen*, *Konfiguration neu laden*, *Notfall: Alle Monitore erweitern (wie Win+P)*, *Log öffnen*, *Sprache*.
 
 ## First-time setup (one time only)
 
 1. Start `SimMonitorSwitch.exe`. A small monitor icon appears in the tray (the arrow next to the clock).
-2. **The sim monitor must be switched on for this step.** Right-click the icon, choose *Select sim monitor*, and click your sim racing monitor. The app remembers its resolution, refresh rate and position.
+2. **Your sim monitors must be switched on for this step.** Right-click the icon, choose *Select sim monitors*, and click a sim racing monitor to add it. Repeat for every sim monitor: the menu closes after each click, so open it again for the next one. The app remembers each monitor's resolution, refresh rate and position.
 3. Right-click again and tick *Start with Windows*.
 
+Checked entries in the *Select sim monitors* menu are your sim monitors. Click a checked entry to remove it again. Monitors that are currently switched off stay in the list, marked *(currently off)*, so you can still see and remove them.
+
 The main display cannot be selected, so you can never lock yourself out by accident.
+
+If you remove a monitor that is currently switched off, it stays off until you bring it back with *Emergency: extend all monitors* or `Win+P`.
 
 ## Usage
 
@@ -38,13 +42,15 @@ The main display cannot be selected, so you can never lock yourself out by accid
 | Automatic mode | *Automatic on game start* in the menu (default: on) |
 | Add a new game | Start the game, then right-click and choose *Add running program as game* |
 
-Icon colors: filled green = monitor on, gray outline = off, orange outline = not set up or not found.
+Icon colors: filled green = all sim monitors on, gray outline = off, filled orange = only some of them on, orange outline = not set up or not found.
+
+With several sim monitors, *Toggle* switches them all off if every connected one is on. In any other state (all off, or only some on) it switches them all on.
 
 ### How automatic mode works
 
-- When one of the registered games starts, the app switches the sim monitor on.
-- Once the game has been closed for 10 seconds, the app switches the monitor off again, but only if it was the one that switched it on.
-- If you switched the monitor on manually (hotkey), it stays on. Manual actions always take precedence.
+- When one of the registered games starts, the app switches the sim monitors on.
+- Once the game has been closed for 10 seconds, the app switches them off again, but only if it was the one that switched them on.
+- If you switched the monitors on manually (hotkey), they stay on. Manual actions always take precedence.
 
 ## Configuration
 
@@ -52,10 +58,11 @@ Use the *Open configuration file* menu entry. The file is located at `%AppData%\
 
 | Field | Meaning |
 | --- | --- |
+| `SimMonitors` | The list of sim monitors. Each entry stores the hardware ID, the last Windows name, a label and the resolution/position used when switching it on. Manage it through the *Select sim monitors* menu rather than by hand. A config from version 1.0 (single monitor) is converted automatically. |
 | `GameProcesses` | Process names without `.exe`. The default list was written from memory and is unverified; the easiest way is to add your game through the menu. |
 | `Hotkey` | e.g. `Ctrl+Alt+S`, `Ctrl+Shift+F9`, `Win+Alt+M` |
 | `PollSeconds` | How often the app checks for running games (default 2) |
-| `DisableDelaySeconds` | Wait time after the game exits before the monitor is switched off (default 10) |
+| `DisableDelaySeconds` | Wait time after the game exits before the monitors are switched off (default 10) |
 | `AutoMode` | Automatic mode on/off |
 | `Language` | `Auto` (default, follows the Windows language), `en` or `de` |
 | `EnableMethod` | `Extend` (default): enables the monitor the same way as `Win+P` → *Extend*. `Legacy`: older method, which may produce a black screen with some graphics drivers. |
@@ -68,13 +75,14 @@ Use the *Open configuration file* menu entry. The file is located at `%AppData%\
 
 ## Safety nets
 
-- The main display is never switched off.
+- The main display is never switched off, and can't be added as a sim monitor.
 - The last active display is never switched off.
-- If the sim monitor is plugged into a different port, the app finds it again via its hardware ID. When several identical monitors are connected, the Windows name (`\\.\DISPLAY3`) serves as an additional check.
+- If a sim monitor is plugged into a different port, the app finds it again via its hardware ID. When several identical monitors are connected, the Windows name (`\\.\DISPLAY3`) serves as an additional check, and each physical monitor is only ever matched to one entry.
 - If something does get stuck: press `Win+P`, then choose *Extend* to bring back all connected monitors.
 
 ## Good to know
 
 - Many sims (iRacing, ACC) read the monitor list at startup. The app checks every 2 seconds, which is usually fast enough. If a game still doesn't detect the monitor, switch it on with the hotkey before launching the game.
 - After switching on, it can take 1 to 3 seconds for Windows to bring up the picture. This is normal.
-- The monitor itself must stay powered on and connected. The app only detaches it from the desktop in Windows; it does not switch the monitor off physically.
+- With several sim monitors, if one of them is unplugged or powered off, the app still switches the others on and off. The tray status then shows *PARTLY ON (x/y)*.
+- The monitors themselves must stay powered on and connected. The app only detaches them from the desktop in Windows; it does not switch them off physically.

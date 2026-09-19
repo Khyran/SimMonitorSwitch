@@ -32,22 +32,28 @@ internal static class Loc
         return args.Length == 0 ? text : string.Format(CultureInfo.CurrentCulture, text, args);
     }
 
+    /// <summary>Wie T, waehlt aber Einzahl (key + ".one") oder Mehrzahl (key + ".many") nach count.</summary>
+    public static string N(string key, int count, params object[] args) =>
+        T(key + (count == 1 ? ".one" : ".many"), args);
+
     private static readonly Dictionary<string, (string En, string De)> Table = new()
     {
         // --- Tray: Status -------------------------------------------------
         ["label.default"]       = ("Sim monitor", "Sim-Monitor"),
+        ["label.multiple"]      = ("{0} sim monitors", "{0} Sim-Monitore"),
+        ["label.multipleShort"] = ("Sim monitors", "Sim-Monitore"),
         ["state.notConfigured"] = ("not set up", "nicht eingerichtet"),
         ["state.on"]            = ("ON", "AN"),
         ["state.off"]           = ("OFF", "AUS"),
         ["state.notFound"]      = ("not found", "nicht gefunden"),
-        ["tray.tooltip"]        = ("Sim monitor: {0}", "Sim-Monitor: {0}"),
+        ["state.partial"]       = ("PARTLY ON ({0}/{1})", "TEILWEISE AN ({0}/{1})"),
 
         // --- Tray: Menue --------------------------------------------------
         ["menu.toggle"]         = ("Toggle   ({0})", "Umschalten   ({0})"),
         ["menu.on"]             = ("Enable", "Einschalten"),
         ["menu.off"]            = ("Disable", "Ausschalten"),
         ["menu.auto"]           = ("Automatic on game start", "Automatisch bei Spielstart"),
-        ["menu.select"]         = ("Select sim monitor", "Sim-Monitor auswählen"),
+        ["menu.select"]         = ("Select sim monitors", "Sim-Monitore auswählen"),
         ["menu.addGame"]        = ("Add running program as game", "Laufendes Programm als Spiel hinzufügen"),
         ["menu.emergency"]      = ("Emergency: extend all monitors (like Win+P)", "Notfall: Alle Monitore erweitern (wie Win+P)"),
         ["menu.openConfig"]     = ("Open configuration file", "Konfigurationsdatei öffnen"),
@@ -66,18 +72,19 @@ internal static class Loc
 
         // --- Benachrichtigungen -------------------------------------------
         ["notify.setup.title"]  = ("Set up sim monitor", "Sim-Monitor einrichten"),
-        ["notify.setup.body"]   = ("Right-click the tray icon and select the sim monitor there (it must be switched on at that moment).",
-                                   "Rechtsklick auf das Tray-Icon und dort den Sim-Monitor auswählen (er muss dafür gerade eingeschaltet sein)."),
-        ["notify.saved"]        = ("Sim monitor saved", "Sim-Monitor gespeichert"),
+        ["notify.setup.body"]   = ("Right-click the tray icon and select your sim monitors there (they must be switched on at that moment).",
+                                   "Rechtsklick auf das Tray-Icon und dort die Sim-Monitore auswählen (sie müssen dafür gerade eingeschaltet sein)."),
+        ["notify.added"]        = ("Sim monitor added", "Sim-Monitor hinzugefügt"),
+        ["notify.removed"]      = ("Sim monitor removed", "Sim-Monitor entfernt"),
         ["notify.error"]        = ("Error", "Fehler"),
         ["notify.simMonitor"]   = ("Sim monitor", "Sim-Monitor"),
         ["notify.noMonitor.title"] = ("No sim monitor selected", "Kein Sim-Monitor gewählt"),
-        ["notify.noMonitor.body"]  = ("Please select the sim monitor in the menu first.", "Bitte zuerst im Menü den Sim-Monitor auswählen."),
+        ["notify.noMonitor.body"]  = ("Please select your sim monitors in the menu first.", "Bitte zuerst im Menü die Sim-Monitore auswählen."),
         ["notify.extend"]       = ("Extend monitors", "Monitore erweitern"),
         ["notify.gameStarted"]  = ("Game detected", "Spiel erkannt"),
         ["notify.gameEnded"]    = ("Game ended", "Spiel beendet"),
         ["notify.gameAdded"]    = ("Game added", "Spiel hinzugefügt"),
-        ["notify.gameAdded.body"] = ("\"{0}\" will now switch on the sim monitor.", "\"{0}\" schaltet ab jetzt den Sim-Monitor ein."),
+        ["notify.gameAdded.body"] = ("\"{0}\" will now switch on the sim monitor(s).", "\"{0}\" schaltet ab jetzt die Sim-Monitore ein."),
         ["notify.hotkey"]       = ("Hotkey unavailable", "Hotkey nicht verfügbar"),
         ["notify.config"]       = ("Configuration", "Konfiguration"),
         ["notify.reloaded"]     = ("Reloaded.", "Neu geladen."),
@@ -93,28 +100,42 @@ internal static class Loc
         ["select.mustBeActive"] = ("The monitor must be active for this.", "Der Monitor muss dafür gerade aktiv sein."),
         ["select.isPrimary"]    = ("This is the primary display. It cannot be switched off.", "Das ist der Hauptbildschirm. Dieser kann nicht ausgeschaltet werden."),
         ["select.readFailed"]   = ("Could not read the monitor's current settings.", "Aktuelle Einstellungen des Monitors konnten nicht gelesen werden."),
-        ["select.ok"]           = ("Sim monitor saved: {0} ({1}x{2} @ {3} Hz).", "Sim-Monitor gespeichert: {0} ({1}x{2} @ {3} Hz)."),
+        ["select.added"]        = ("Sim monitor added: {0} ({1}x{2} @ {3} Hz).", "Sim-Monitor hinzugefügt: {0} ({1}x{2} @ {3} Hz)."),
+        ["select.removed"]      = ("Sim monitor removed: {0}.", "Sim-Monitor entfernt: {0}."),
 
         // --- Monitor: Einschalten -----------------------------------------
-        ["enable.notFound"]     = ("Sim monitor not found. Is it connected and switched on?", "Sim-Monitor nicht gefunden. Ist er angeschlossen und eingeschaltet?"),
-        ["enable.already"]      = ("Sim monitor is already active.", "Sim-Monitor ist bereits aktiv."),
-        ["enable.noMode"]       = ("No saved settings. Please select the sim monitor again.", "Keine gespeicherten Einstellungen. Bitte den Sim-Monitor neu auswählen."),
-        ["enable.failed"]       = ("Windows did not activate the monitor (maybe switched off or cable unplugged).",
-                                   "Windows hat den Monitor nicht aktiviert (evtl. ausgeschaltet oder Kabel getrennt)."),
-        ["enable.ok"]           = ("Sim monitor switched on ({0}).", "Sim-Monitor eingeschaltet ({0})."),
+        ["enable.notFound.one"]  = ("Sim monitor not found. Is it connected and switched on?", "Sim-Monitor nicht gefunden. Ist er angeschlossen und eingeschaltet?"),
+        ["enable.notFound.many"] = ("No sim monitor found. Are they connected and switched on?", "Kein Sim-Monitor gefunden. Sind sie angeschlossen und eingeschaltet?"),
+        ["enable.already.one"]   = ("Sim monitor is already active.", "Sim-Monitor ist bereits aktiv."),
+        ["enable.already.many"]  = ("Sim monitors are already active.", "Sim-Monitore sind bereits aktiv."),
+        ["enable.noMode.one"]    = ("No saved settings. Please select the sim monitor again.", "Keine gespeicherten Einstellungen. Bitte den Sim-Monitor neu auswählen."),
+        ["enable.noMode.many"]   = ("No saved settings. Please select the sim monitors again.", "Keine gespeicherten Einstellungen. Bitte die Sim-Monitore neu auswählen."),
+        ["enable.failed.one"]    = ("Windows did not activate the monitor (maybe switched off or cable unplugged).",
+                                    "Windows hat den Monitor nicht aktiviert (evtl. ausgeschaltet oder Kabel getrennt)."),
+        ["enable.failed.many"]   = ("Windows did not activate the monitors (maybe switched off or cables unplugged).",
+                                    "Windows hat die Monitore nicht aktiviert (evtl. ausgeschaltet oder Kabel getrennt)."),
+        ["enable.ok"]            = ("Sim monitor switched on ({0}).", "Sim-Monitor eingeschaltet ({0})."),
+        ["enable.okMulti"]       = ("{0} sim monitors switched on.", "{0} Sim-Monitore eingeschaltet."),
+        ["enable.partial"]       = ("Only {0} of {1} sim monitors switched on. See the log for details.",
+                                    "Nur {0} von {1} Sim-Monitoren eingeschaltet. Details im Log."),
         ["extend.ok"]           = ("Monitors extended.", "Monitore erweitert."),
         ["extend.failed"]       = ("SetDisplayConfig failed (code {0}).", "SetDisplayConfig fehlgeschlagen (Code {0})."),
         ["mode.unknown"]        = ("unknown", "unbekannt"),
         ["mode.describe"]       = ("{0}x{1} @ {2} Hz, position {3},{4}", "{0}x{1} @ {2} Hz, Position {3},{4}"),
 
         // --- Monitor: Ausschalten -----------------------------------------
-        ["disable.notFound"]    = ("Sim monitor not found.", "Sim-Monitor nicht gefunden."),
-        ["disable.already"]     = ("Sim monitor is already off.", "Sim-Monitor ist bereits aus."),
+        ["disable.notFound.one"]  = ("Sim monitor not found.", "Sim-Monitor nicht gefunden."),
+        ["disable.notFound.many"] = ("No sim monitor found.", "Kein Sim-Monitor gefunden."),
+        ["disable.already.one"]   = ("Sim monitor is already off.", "Sim-Monitor ist bereits aus."),
+        ["disable.already.many"]  = ("Sim monitors are already off.", "Sim-Monitore sind bereits aus."),
         ["disable.isPrimary"]   = ("The sim monitor is currently the primary display. Aborted, otherwise there would be no primary display left.",
                                    "Der Sim-Monitor ist gerade der Hauptbildschirm. Abbruch, sonst gäbe es keinen Hauptbildschirm mehr."),
         ["disable.lastActive"]  = ("No active display would be left. Aborted.", "Es würde kein aktiver Bildschirm übrig bleiben. Abbruch."),
-        ["disable.ok"]          = ("Sim monitor switched off.", "Sim-Monitor ausgeschaltet."),
-        ["disable.failed"]      = ("Windows did not deactivate the monitor.", "Windows hat den Monitor nicht deaktiviert."),
+        ["disable.ok.one"]      = ("Sim monitor switched off.", "Sim-Monitor ausgeschaltet."),
+        ["disable.ok.many"]     = ("{0} sim monitors switched off.", "{0} Sim-Monitore ausgeschaltet."),
+        ["disable.failed.one"]  = ("Windows did not deactivate the monitor.", "Windows hat den Monitor nicht deaktiviert."),
+        ["disable.failed.many"] = ("Windows did not deactivate all monitors.", "Windows hat nicht alle Monitore deaktiviert."),
+        ["disable.skippedPrimary"] = ("{0} skipped (primary display).", "{0} übersprungen (Hauptbildschirm)."),
 
         // --- Windows-Fehlercodes ------------------------------------------
         ["apply.rejected"]      = ("Windows rejected the change ({0}).", "Windows lehnt die Änderung ab ({0})."),

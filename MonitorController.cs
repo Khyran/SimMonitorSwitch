@@ -12,7 +12,24 @@ internal sealed record MonitorInfo(
 
 internal sealed record ActionResult(bool Ok, string Message);
 
-/// <summary>Schaltet den konfigurierten Sim-Monitor ueber die Windows-API ein und aus.</summary>
+/// <summary>Ein konfigurierter Sim-Monitor und (falls gefunden) sein aktueller Windows-Zustand.</summary>
+internal sealed record ResolvedMonitor(SimMonitorEntry Entry, MonitorInfo? Info)
+{
+    public bool Found => Info != null;
+    public bool Attached => Info?.Attached == true;
+}
+
+/// <summary>Total = konfiguriert, Found = von Windows gefunden, Attached = davon aktuell am Desktop.</summary>
+internal sealed record MonitorStatus(int Total, int Found, int Attached)
+{
+    /// <summary>Alle gefundenen Sim-Monitore sind an (und mindestens einer wurde gefunden).</summary>
+    public bool AllFoundOn => Found > 0 && Attached == Found;
+
+    /// <summary>Mindestens ein gefundener Sim-Monitor ist aus.</summary>
+    public bool AnyFoundOff => Found > Attached;
+}
+
+/// <summary>Schaltet die konfigurierten Sim-Monitore ueber die Windows-API ein und aus.</summary>
 internal sealed class MonitorController
 {
     private readonly AppConfig _cfg;
@@ -66,68 +83,105 @@ internal sealed class MonitorController
         return parts.Length >= 2 ? parts[0] + "\\" + parts[1] : deviceId.TrimEnd('\0');
     }
 
-    public MonitorInfo? FindConfigured()
+    public bool IsConfigured => _cfg.SimMonitors.Count > 0;
+
+    private static bool SameId(SimMonitorEntry e, MonitorInfo m) =>
+        !string.IsNullOrEmpty(e.MonitorId)
+        && string.Equals(m.MonitorId, e.MonitorId, StringComparison.OrdinalIgnoreCase);
+
+    private static bool SameName(SimMonitorEntry e, MonitorInfo m) =>
+        !string.IsNullOrEmpty(e.LastDeviceName)
+        && string.Equals(m.DeviceName, e.LastDeviceName, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Ordnet jedem konfigurierten Sim-Monitor den passenden Windows-Ausgang zu. Ein Ausgang wird
+    /// hoechstens einem Eintrag zugeordnet, auch bei mehreren baugleichen Monitoren.
+    /// </summary>
+    public List<ResolvedMonitor> ResolveAll()
     {
-        if (string.IsNullOrEmpty(_cfg.MonitorId) && string.IsNullOrEmpty(_cfg.LastDeviceName))
-            return null;
-
+        var entries = _cfg.SimMonitors.ToList();
         var all = Enumerate();
+        var info = new MonitorInfo?[entries.Count];
+        var claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        bool SameId(MonitorInfo m) =>
-            !string.IsNullOrEmpty(_cfg.MonitorId)
-            && string.Equals(m.MonitorId, _cfg.MonitorId, StringComparison.OrdinalIgnoreCase);
+        void Claim(int i, MonitorInfo m)
+        {
+            info[i] = m;
+            claimed.Add(m.DeviceName);
+        }
 
-        bool SameName(MonitorInfo m) =>
-            !string.IsNullOrEmpty(_cfg.LastDeviceName)
-            && string.Equals(m.DeviceName, _cfg.LastDeviceName, StringComparison.OrdinalIgnoreCase);
+        IEnumerable<MonitorInfo> Free() => all.Where(m => !claimed.Contains(m.DeviceName));
 
         // 1. Beides passt (ID und Windows-Name): das ist der richtige Monitor.
-        var exact = all.FirstOrDefault(m => SameId(m) && SameName(m));
-        if (exact != null) return exact;
+        for (int i = 0; i < entries.Count; i++)
+        {
+            if (info[i] != null) continue;
+            var m = Free().FirstOrDefault(m => SameId(entries[i], m) && SameName(entries[i], m));
+            if (m != null) Claim(i, m);
+        }
 
         // 2. Nur die Hardware-ID passt (Monitor wurde an einen anderen Anschluss gesteckt).
-        //    Nur akzeptieren, wenn sie eindeutig ist. Bei mehreren baugleichen Monitoren
-        //    waere das sonst ein Ratespiel und es koennte der falsche abgeschaltet werden.
-        var byId = all.Where(SameId).ToList();
-        if (byId.Count == 1) return byId[0];
+        //    Nur akzeptieren, wenn sie unter den noch freien Ausgaengen eindeutig ist. Bei mehreren
+        //    baugleichen Monitoren waere das sonst ein Ratespiel und es koennte der falsche
+        //    abgeschaltet werden.
+        for (int i = 0; i < entries.Count; i++)
+        {
+            if (info[i] != null) continue;
+            var byId = Free().Where(m => SameId(entries[i], m)).ToList();
+            if (byId.Count == 1) Claim(i, byId[0]);
+        }
 
         // 3. Nur der Windows-Name passt. Das ist der Fall, wenn der abgeschaltete Ausgang
         //    keine ID mehr meldet. Ein Ausgang mit einer anderen ID ist ein anderer Monitor.
-        var byName = all.FirstOrDefault(SameName);
-        if (byName != null
-            && (byName.MonitorId == null || string.IsNullOrEmpty(_cfg.MonitorId) || SameId(byName)))
-            return byName;
+        for (int i = 0; i < entries.Count; i++)
+        {
+            if (info[i] != null) continue;
+            var m = Free().FirstOrDefault(m => SameName(entries[i], m)
+                && (m.MonitorId == null || string.IsNullOrEmpty(entries[i].MonitorId) || SameId(entries[i], m)));
+            if (m != null) Claim(i, m);
+        }
 
-        return null;
+        return entries.Select((e, i) => new ResolvedMonitor(e, info[i])).ToList();
     }
 
-    public bool IsConfigured => !string.IsNullOrEmpty(_cfg.MonitorId) || !string.IsNullOrEmpty(_cfg.LastDeviceName);
-
-    public bool? IsEnabled() => FindConfigured()?.Attached;
+    public MonitorStatus GetStatus()
+    {
+        var resolved = ResolveAll();
+        return new MonitorStatus(resolved.Count, resolved.Count(r => r.Found), resolved.Count(r => r.Attached));
+    }
 
     // ------------------------------------------------------------------
-    // Auswaehlen und aktuelle Einstellungen merken
+    // Sim-Monitore hinzufuegen / entfernen
     // ------------------------------------------------------------------
 
-    /// <summary>Merkt sich den Monitor samt aktueller Aufloesung/Position.</summary>
-    public ActionResult Select(MonitorInfo monitor)
+    /// <summary>Nimmt den Monitor samt aktueller Aufloesung/Position in die Liste auf.</summary>
+    public ActionResult Add(MonitorInfo monitor)
     {
         if (!monitor.Attached)
             return new(false, Loc.T("select.mustBeActive"));
         if (monitor.Primary)
             return new(false, Loc.T("select.isPrimary"));
 
-        _cfg.MonitorId = monitor.MonitorId;
-        _cfg.LastDeviceName = monitor.DeviceName;
-        _cfg.MonitorLabel = monitor.Name;
-
         var mode = ReadCurrentMode(monitor.DeviceName);
         if (mode == null)
             return new(false, Loc.T("select.readFailed"));
 
-        _cfg.Mode = mode;
+        _cfg.SimMonitors.Add(new SimMonitorEntry
+        {
+            MonitorId = monitor.MonitorId,
+            LastDeviceName = monitor.DeviceName,
+            Label = monitor.Name,
+            Mode = mode,
+        });
         _cfg.Save();
-        return new(true, Loc.T("select.ok", monitor.Name, mode.Width, mode.Height, mode.Frequency));
+        return new(true, Loc.T("select.added", monitor.Name, mode.Width, mode.Height, mode.Frequency));
+    }
+
+    public ActionResult Remove(SimMonitorEntry entry)
+    {
+        _cfg.SimMonitors.Remove(entry);
+        _cfg.Save();
+        return new(true, Loc.T("select.removed", entry.Label ?? Loc.T("label.default")));
     }
 
     private static SavedMode? ReadCurrentMode(string deviceName)
@@ -136,17 +190,28 @@ internal sealed class MonitorController
         if (!EnumDisplaySettings(deviceName, ENUM_CURRENT_SETTINGS, ref dm) || dm.dmPelsWidth <= 0)
             return null;
 
-        return new SavedMode
-        {
-            X = dm.dmPosition.x,
-            Y = dm.dmPosition.y,
-            Width = dm.dmPelsWidth,
-            Height = dm.dmPelsHeight,
-            Frequency = dm.dmDisplayFrequency > 1 ? dm.dmDisplayFrequency : 60,
-            Orientation = dm.dmDisplayOrientation,
-            BitsPerPel = dm.dmBitsPerPel > 0 ? dm.dmBitsPerPel : 32,
-        };
+        return ToSavedMode(dm);
     }
+
+    private static SavedMode? ReadRegistryMode(string deviceName)
+    {
+        var dm = NewDevMode();
+        if (!EnumDisplaySettings(deviceName, ENUM_REGISTRY_SETTINGS, ref dm) || dm.dmPelsWidth <= 0)
+            return null;
+
+        return ToSavedMode(dm);
+    }
+
+    private static SavedMode ToSavedMode(DEVMODE dm) => new()
+    {
+        X = dm.dmPosition.x,
+        Y = dm.dmPosition.y,
+        Width = dm.dmPelsWidth,
+        Height = dm.dmPelsHeight,
+        Frequency = dm.dmDisplayFrequency > 1 ? dm.dmDisplayFrequency : 60,
+        Orientation = dm.dmDisplayOrientation,
+        BitsPerPel = dm.dmBitsPerPel > 0 ? dm.dmBitsPerPel : 32,
+    };
 
     // ------------------------------------------------------------------
     // Einschalten
@@ -154,53 +219,99 @@ internal sealed class MonitorController
 
     public ActionResult Enable()
     {
-        var monitor = FindConfigured();
-        if (monitor == null)
-            return new(false, Loc.T("enable.notFound"));
-        if (monitor.Attached)
-            return new(true, Loc.T("enable.already"));
+        var resolved = ResolveAll();
+        int total = resolved.Count;
 
-        var mode = _cfg.Mode ?? ReadRegistryMode(monitor.DeviceName);
-        if (mode == null)
-            return new(false, Loc.T("enable.noMode"));
+        var found = resolved.Where(r => r.Found).ToList();
+        if (found.Count == 0)
+            return new(false, Loc.N("enable.notFound", total));
 
-        Log.Write($"Enable: {monitor.DeviceName}, saved: {Describe(mode)}, method: {_cfg.EnableMethod}");
+        var targets = found.Where(r => !r.Attached).ToList();
+        if (targets.Count == 0)
+            return new(true, Loc.N("enable.already", total));
 
-        bool attached = false;
+        // Gespeicherte Einstellungen je Monitor. Ohne Einstellungen kann ein Monitor nicht sicher eingeschaltet werden.
+        var jobs = new List<(ResolvedMonitor Monitor, SavedMode Mode)>();
+        foreach (var t in targets)
+        {
+            var mode = t.Entry.Mode ?? ReadRegistryMode(t.Info!.DeviceName);
+            if (mode == null)
+            {
+                Log.Write($"Enable: no saved mode for {t.Info!.DeviceName}, skipped");
+                continue;
+            }
+            jobs.Add((t, mode));
+            Log.Write($"Enable: {t.Info!.DeviceName}, saved: {Describe(mode)}, method: {_cfg.EnableMethod}");
+        }
+
+        if (jobs.Count == 0)
+            return new(false, Loc.N("enable.noMode", total));
+
+        var done = new List<ResolvedMonitor>();
+        string? lastError = null;
 
         // Weg 1 (Standard): wie Win+P -> Erweitern. Das ist ein echter Neuaufbau der Bildausgabe.
         if (string.Equals(_cfg.EnableMethod, "Extend", StringComparison.OrdinalIgnoreCase))
         {
             var ext = ExtendAll();
             Log.Write($"Extend: {ext.Message}");
-            attached = ext.Ok && WaitFor(monitor, attached: true);
+            if (ext.Ok)
+                done.AddRange(WaitForAll(jobs.Select(j => j.Monitor).ToList(), attached: true));
         }
 
-        // Weg 2 (Rueckfall): ueber die aeltere Schnittstelle
-        if (!attached)
+        // Weg 2 (Rueckfall): ueber die aeltere Schnittstelle, fuer alle noch fehlenden Monitore gesammelt
+        var rest = jobs.Where(j => !done.Contains(j.Monitor)).ToList();
+        if (rest.Count > 0)
         {
-            var apply = ApplyMode(monitor.DeviceName, mode);
-            Log.Write($"Legacy activation: {apply.Message}");
-            if (!apply.Ok) return apply;
-            attached = WaitFor(monitor, attached: true);
+            bool anyStaged = false;
+            foreach (var (monitor, mode) in rest)
+            {
+                var stage = StageMode(monitor.Info!.DeviceName, mode);
+                Log.Write($"Legacy activation staged ({monitor.Info.DeviceName}): {stage.Message}");
+                if (stage.Ok) anyStaged = true; else lastError = stage.Message;
+            }
+
+            if (anyStaged)
+            {
+                var commit = Commit();
+                Log.Write($"Legacy activation: {commit.Message}");
+                if (commit.Ok)
+                    done.AddRange(WaitForAll(rest.Select(j => j.Monitor).ToList(), attached: true));
+                else
+                    lastError = commit.Message;
+            }
         }
 
-        if (!attached)
-            return new(false, Loc.T("enable.failed"));
+        if (done.Count == 0)
+            return new(false, lastError ?? Loc.N("enable.failed", total));
 
         // Nachpruefen: stimmen Aufloesung, Hz und Position noch mit den gespeicherten Werten?
         Thread.Sleep(500);
-        var now = ReadCurrentMode(monitor.DeviceName);
-        Log.Write($"After enabling: {Describe(now)}");
-        if (now == null || !SameMode(now, mode))
+        var fixes = new List<(ResolvedMonitor Monitor, SavedMode Mode)>();
+        foreach (var job in jobs.Where(j => done.Contains(j.Monitor)))
         {
-            var fix = ApplyMode(monitor.DeviceName, mode);
-            Log.Write($"Mode re-applied: {fix.Message}");
-            now = ReadCurrentMode(monitor.DeviceName) ?? now;
-            Log.Write($"Afterwards: {Describe(now)}");
+            string dev = job.Monitor.Info!.DeviceName;
+            var now = ReadCurrentMode(dev);
+            Log.Write($"After enabling ({dev}): {Describe(now)}");
+            if (now == null || !SameMode(now, job.Mode))
+                fixes.Add(job);
         }
 
-        return new(true, Loc.T("enable.ok", Describe(now)));
+        if (fixes.Count > 0)
+        {
+            foreach (var (monitor, mode) in fixes)
+                Log.Write($"Mode re-applied ({monitor.Info!.DeviceName}): {StageMode(monitor.Info.DeviceName, mode).Message}");
+            Log.Write($"Mode re-applied: {Commit().Message}");
+            foreach (var (monitor, _) in fixes)
+                Log.Write($"Afterwards ({monitor.Info!.DeviceName}): {Describe(ReadCurrentMode(monitor.Info.DeviceName))}");
+        }
+
+        if (done.Count < targets.Count)
+            return new(false, Loc.T("enable.partial", done.Count, targets.Count));
+
+        return done.Count == 1
+            ? new(true, Loc.T("enable.ok", Describe(ReadCurrentMode(done[0].Info!.DeviceName))))
+            : new(true, Loc.T("enable.okMulti", done.Count));
     }
 
     /// <summary>Wie Win+P -> Erweitern: alle angeschlossenen Monitore in den Desktop holen.</summary>
@@ -212,7 +323,7 @@ internal sealed class MonitorController
             : new(false, Loc.T("extend.failed", rc));
     }
 
-    private static ActionResult ApplyMode(string deviceName, SavedMode mode)
+    private static ActionResult StageMode(string deviceName, SavedMode mode)
     {
         var dm = NewDevMode();
         dm.dmFields = DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL
@@ -223,7 +334,7 @@ internal sealed class MonitorController
         dm.dmBitsPerPel = mode.BitsPerPel;
         dm.dmDisplayFrequency = mode.Frequency;
         dm.dmDisplayOrientation = mode.Orientation;
-        return ApplyChange(deviceName, ref dm);
+        return Stage(deviceName, ref dm);
     }
 
     private static bool SameMode(SavedMode a, SavedMode b) =>
@@ -232,110 +343,138 @@ internal sealed class MonitorController
     private static string Describe(SavedMode? m) =>
         m == null ? Loc.T("mode.unknown") : Loc.T("mode.describe", m.Width, m.Height, m.Frequency, m.X, m.Y);
 
-    private static SavedMode? ReadRegistryMode(string deviceName)
-    {
-        var dm = NewDevMode();
-        if (!EnumDisplaySettings(deviceName, ENUM_REGISTRY_SETTINGS, ref dm) || dm.dmPelsWidth <= 0)
-            return null;
-
-        return new SavedMode
-        {
-            X = dm.dmPosition.x,
-            Y = dm.dmPosition.y,
-            Width = dm.dmPelsWidth,
-            Height = dm.dmPelsHeight,
-            Frequency = dm.dmDisplayFrequency > 1 ? dm.dmDisplayFrequency : 60,
-            Orientation = dm.dmDisplayOrientation,
-            BitsPerPel = dm.dmBitsPerPel > 0 ? dm.dmBitsPerPel : 32,
-        };
-    }
-
     // ------------------------------------------------------------------
     // Ausschalten
     // ------------------------------------------------------------------
 
     public ActionResult Disable()
     {
-        var monitor = FindConfigured();
-        if (monitor == null)
-            return new(false, Loc.T("disable.notFound"));
-        if (!monitor.Attached)
-            return new(true, Loc.T("disable.already"));
+        var resolved = ResolveAll();
+        int total = resolved.Count;
+
+        var found = resolved.Where(r => r.Found).ToList();
+        if (found.Count == 0)
+            return new(false, Loc.N("disable.notFound", total));
+
+        var active = found.Where(r => r.Attached).ToList();
+        if (active.Count == 0)
+            return new(true, Loc.N("disable.already", total));
 
         // Sicherheitsnetz 1: nie den Hauptbildschirm abschalten
-        if (monitor.Primary)
+        var primary = active.Where(r => r.Info!.Primary).ToList();
+        var targets = active.Where(r => !r.Info!.Primary).ToList();
+        if (targets.Count == 0)
             return new(false, Loc.T("disable.isPrimary"));
 
         // Sicherheitsnetz 2: mindestens ein anderer Bildschirm muss aktiv bleiben
-        int otherActive = Enumerate().Count(m => m.Attached && m.DeviceName != monitor.DeviceName);
+        var switchOff = targets.Select(t => t.Info!.DeviceName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        int otherActive = Enumerate().Count(m => m.Attached && !switchOff.Contains(m.DeviceName));
         if (otherActive < 1)
             return new(false, Loc.T("disable.lastActive"));
 
         // Aktuelle Einstellungen merken, damit beim Einschalten alles wieder passt
-        var current = ReadCurrentMode(monitor.DeviceName);
-        if (current != null)
+        var currentModes = new Dictionary<ResolvedMonitor, SavedMode?>();
+        foreach (var t in targets)
         {
-            _cfg.Mode = current;
-            _cfg.LastDeviceName = monitor.DeviceName;
-            _cfg.Save();
+            var current = ReadCurrentMode(t.Info!.DeviceName);
+            currentModes[t] = current;
+            if (current != null)
+            {
+                t.Entry.Mode = current;
+                t.Entry.LastDeviceName = t.Info.DeviceName;
+            }
+        }
+        _cfg.Save();
+
+        // Aufloesung 0x0 = Ausgang vom Desktop trennen. Erst alle vormerken, dann einmal anwenden.
+        bool anyStaged = false;
+        string? lastError = null;
+        foreach (var t in targets)
+        {
+            var current = currentModes[t];
+            var dm = NewDevMode();
+            dm.dmFields = DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT;
+            dm.dmPosition = new POINTL { x = current?.X ?? 0, y = current?.Y ?? 0 };
+            dm.dmPelsWidth = 0;
+            dm.dmPelsHeight = 0;
+
+            Log.Write($"Disable: {t.Info!.DeviceName}, remembered: {Describe(current)}");
+            var stage = Stage(t.Info.DeviceName, ref dm);
+            if (stage.Ok) anyStaged = true; else lastError = stage.Message;
         }
 
-        // Aufloesung 0x0 = Ausgang vom Desktop trennen
-        var dm = NewDevMode();
-        dm.dmFields = DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT;
-        dm.dmPosition = new POINTL { x = current?.X ?? 0, y = current?.Y ?? 0 };
-        dm.dmPelsWidth = 0;
-        dm.dmPelsHeight = 0;
+        if (!anyStaged)
+            return new(false, lastError ?? Loc.N("disable.failed", targets.Count));
 
-        Log.Write($"Disable: {monitor.DeviceName}, remembered: {Describe(current)}");
-        var apply = ApplyChange(monitor.DeviceName, ref dm);
-        Log.Write($"Disable result: {apply.Message}");
-        if (!apply.Ok) return apply;
+        var commit = Commit();
+        Log.Write($"Disable result: {commit.Message}");
+        if (!commit.Ok) return commit;
 
-        return WaitFor(monitor, attached: false)
-            ? new(true, Loc.T("disable.ok"))
-            : new(false, Loc.T("disable.failed"));
+        var gone = WaitForAll(targets, attached: false);
+        if (gone.Count < targets.Count)
+            return new(false, Loc.N("disable.failed", targets.Count));
+
+        string message = Loc.N("disable.ok", targets.Count, targets.Count);
+        if (primary.Count > 0)
+            message += " " + Loc.T("disable.skippedPrimary", primary.Count);
+        return new(true, message);
     }
 
     // ------------------------------------------------------------------
     // Gemeinsame Helfer
     // ------------------------------------------------------------------
 
-    /// <summary>Aenderung in der Registry vormerken (NORESET) und danach gesammelt anwenden.</summary>
-    private static ActionResult ApplyChange(string deviceName, ref DEVMODE dm)
+    /// <summary>Aenderung in der Registry vormerken (NORESET). Angewendet wird spaeter mit Commit().</summary>
+    private static ActionResult Stage(string deviceName, ref DEVMODE dm)
     {
         int r = ChangeDisplaySettingsEx(deviceName, ref dm, IntPtr.Zero,
             CDS_UPDATEREGISTRY | CDS_NORESET, IntPtr.Zero);
         Log.Write($"ChangeDisplaySettingsEx({deviceName}) -> {r}");
-        if (r != DISP_CHANGE_SUCCESSFUL)
-            return new(false, Loc.T("apply.rejected", DescribeError(r)));
-
-        r = ChangeDisplaySettingsExApply(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
-        if (r != DISP_CHANGE_SUCCESSFUL && r != DISP_CHANGE_RESTART)
-            return new(false, Loc.T("apply.failed", DescribeError(r)));
-
-        return new(true, "OK");
+        return r == DISP_CHANGE_SUCCESSFUL
+            ? new(true, "OK")
+            : new(false, Loc.T("apply.rejected", DescribeError(r)));
     }
 
-    private bool WaitFor(MonitorInfo monitor, bool attached)
+    /// <summary>Wendet alle vorgemerkten Aenderungen auf einmal an.</summary>
+    private static ActionResult Commit()
     {
-        for (int i = 0; i < 20; i++)   // bis zu ~4 s
+        int r = ChangeDisplaySettingsExApply(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
+        return r == DISP_CHANGE_SUCCESSFUL || r == DISP_CHANGE_RESTART
+            ? new(true, "OK")
+            : new(false, Loc.T("apply.failed", DescribeError(r)));
+    }
+
+    /// <summary>Wartet (bis ca. 4 s), bis die Monitore am Desktop haengen bzw. getrennt sind. Liefert die, die es geschafft haben.</summary>
+    private List<ResolvedMonitor> WaitForAll(List<ResolvedMonitor> monitors, bool attached)
+    {
+        var reached = new List<ResolvedMonitor>();
+        bool idsChanged = false;
+
+        for (int i = 0; i < 20; i++)
         {
-            var cur = Enumerate().FirstOrDefault(m =>
-                string.Equals(m.DeviceName, monitor.DeviceName, StringComparison.OrdinalIgnoreCase));
-            if (cur != null && cur.Attached == attached)
+            var all = Enumerate();
+            foreach (var m in monitors.Where(m => !reached.Contains(m)))
             {
+                var cur = all.FirstOrDefault(c =>
+                    string.Equals(c.DeviceName, m.Info!.DeviceName, StringComparison.OrdinalIgnoreCase));
+                if (cur == null || cur.Attached != attached) continue;
+
+                reached.Add(m);
+
                 // Nach dem Einschalten Hardware-ID auffrischen
-                if (attached && cur.MonitorId != null && _cfg.MonitorId != cur.MonitorId)
+                if (attached && cur.MonitorId != null && m.Entry.MonitorId != cur.MonitorId)
                 {
-                    _cfg.MonitorId = cur.MonitorId;
-                    _cfg.Save();
+                    m.Entry.MonitorId = cur.MonitorId;
+                    idsChanged = true;
                 }
-                return true;
             }
+
+            if (reached.Count == monitors.Count) break;
             Thread.Sleep(200);
         }
-        return false;
+
+        if (idsChanged) _cfg.Save();
+        return reached;
     }
 
     private static string DescribeError(int code) => code switch
