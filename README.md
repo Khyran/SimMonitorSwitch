@@ -31,7 +31,7 @@ Checked entries in the *Select sim monitors* menu are your sim monitors. Click a
 
 The main display cannot be selected, so you can never lock yourself out by accident.
 
-If you remove a monitor that is currently switched off, it stays off until you bring it back with *Emergency: extend all monitors* or `Win+P`.
+If you remove a monitor that is currently switched off, the app switches it back on first and then removes it, so it doesn't stay detached from the desktop. Other sim monitors that are off stay off. If the monitor can't be switched back on, it is not removed and you get an error message.
 
 ## Usage
 

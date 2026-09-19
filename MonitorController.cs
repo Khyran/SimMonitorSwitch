@@ -177,11 +177,28 @@ internal sealed class MonitorController
         return new(true, Loc.T("select.added", monitor.Name, mode.Width, mode.Height, mode.Frequency));
     }
 
+    /// <summary>
+    /// Nimmt den Monitor aus der Liste. Ist er gerade aus (vom Desktop getrennt), wird er zuerst wieder
+    /// eingeschaltet, sonst bliebe er nach dem Entfernen getrennt. Klappt das nicht, bleibt er in der Liste.
+    /// </summary>
     public ActionResult Remove(SimMonitorEntry entry)
     {
+        string label = entry.Label ?? Loc.T("label.default");
+        bool switchedOn = false;
+
+        var self = ResolveAll().FirstOrDefault(r => r.Entry == entry);
+        if (self is { Found: true, Attached: false })
+        {
+            var r = EnableOnly(entry);
+            Log.Write($"Remove: switching {label} back on first: {r.Message}");
+            if (!r.Ok)
+                return new(false, Loc.T("select.removeFailed", label, r.Message));
+            switchedOn = true;
+        }
+
         _cfg.SimMonitors.Remove(entry);
         _cfg.Save();
-        return new(true, Loc.T("select.removed", entry.Label ?? Loc.T("label.default")));
+        return new(true, Loc.T(switchedOn ? "select.removedOn" : "select.removed", label));
     }
 
     private static SavedMode? ReadCurrentMode(string deviceName)
@@ -217,9 +234,42 @@ internal sealed class MonitorController
     // Einschalten
     // ------------------------------------------------------------------
 
-    public ActionResult Enable()
+    public ActionResult Enable() => EnableCore(null);
+
+    /// <summary>Schaltet nur diesen einen Sim-Monitor ein (andere Sim-Monitore bleiben, wie sie sind).</summary>
+    private ActionResult EnableOnly(SimMonitorEntry entry) => EnableCore(entry);
+
+    private ActionResult EnableCore(SimMonitorEntry? only)
     {
         var resolved = ResolveAll();
+
+        // "Erweitern" holt alle angeschlossenen Monitore zurueck. Bei "nur dieser" merken wir uns die anderen
+        // ausgeschalteten Sim-Monitore, um sie danach wieder zu trennen.
+        var otherOff = only == null
+            ? new List<ResolvedMonitor>()
+            : resolved.Where(r => r.Entry != only && r.Found && !r.Attached).ToList();
+        if (only != null)
+            resolved = resolved.Where(r => r.Entry == only).ToList();
+
+        var result = EnableResolved(resolved);
+
+        if (otherOff.Count > 0)
+        {
+            var now = Enumerate();
+            var cameBack = otherOff.Where(o => now.Any(c => c.Attached
+                && string.Equals(c.DeviceName, o.Info!.DeviceName, StringComparison.OrdinalIgnoreCase))).ToList();
+            if (cameBack.Count > 0)
+            {
+                Log.Write($"Enable (single): switching {cameBack.Count} other sim monitor(s) off again");
+                Detach(cameBack, rememberModes: false, out _);
+            }
+        }
+
+        return result;
+    }
+
+    private ActionResult EnableResolved(List<ResolvedMonitor> resolved)
+    {
         int total = resolved.Count;
 
         var found = resolved.Where(r => r.Found).ToList();
@@ -372,21 +422,41 @@ internal sealed class MonitorController
         if (otherActive < 1)
             return new(false, Loc.T("disable.lastActive"));
 
-        // Aktuelle Einstellungen merken, damit beim Einschalten alles wieder passt
+        var gone = Detach(targets, rememberModes: true, out var failure);
+        if (failure != null)
+            return failure;
+
+        if (gone.Count < targets.Count)
+            return new(false, Loc.N("disable.failed", targets.Count));
+
+        string message = Loc.N("disable.ok", targets.Count, targets.Count);
+        if (primary.Count > 0)
+            message += " " + Loc.T("disable.skippedPrimary", primary.Count);
+        return new(true, message);
+    }
+
+    /// <summary>
+    /// Trennt die Monitore vom Desktop (Aufloesung 0x0): erst alle vormerken, dann einmal anwenden.
+    /// Mit rememberModes werden die aktuellen Einstellungen fuer das Wiedereinschalten gespeichert.
+    /// Liefert die Monitore, die wirklich getrennt wurden. Lehnt Windows alles ab, steht der Fehler in failure.
+    /// </summary>
+    private List<ResolvedMonitor> Detach(List<ResolvedMonitor> targets, bool rememberModes, out ActionResult? failure)
+    {
+        failure = null;
+
         var currentModes = new Dictionary<ResolvedMonitor, SavedMode?>();
         foreach (var t in targets)
         {
             var current = ReadCurrentMode(t.Info!.DeviceName);
             currentModes[t] = current;
-            if (current != null)
+            if (rememberModes && current != null)
             {
                 t.Entry.Mode = current;
                 t.Entry.LastDeviceName = t.Info.DeviceName;
             }
         }
-        _cfg.Save();
+        if (rememberModes) _cfg.Save();
 
-        // Aufloesung 0x0 = Ausgang vom Desktop trennen. Erst alle vormerken, dann einmal anwenden.
         bool anyStaged = false;
         string? lastError = null;
         foreach (var t in targets)
@@ -404,20 +474,20 @@ internal sealed class MonitorController
         }
 
         if (!anyStaged)
-            return new(false, lastError ?? Loc.N("disable.failed", targets.Count));
+        {
+            failure = new(false, lastError ?? Loc.N("disable.failed", targets.Count));
+            return new();
+        }
 
         var commit = Commit();
         Log.Write($"Disable result: {commit.Message}");
-        if (!commit.Ok) return commit;
+        if (!commit.Ok)
+        {
+            failure = commit;
+            return new();
+        }
 
-        var gone = WaitForAll(targets, attached: false);
-        if (gone.Count < targets.Count)
-            return new(false, Loc.N("disable.failed", targets.Count));
-
-        string message = Loc.N("disable.ok", targets.Count, targets.Count);
-        if (primary.Count > 0)
-            message += " " + Loc.T("disable.skippedPrimary", primary.Count);
-        return new(true, message);
+        return WaitForAll(targets, attached: false);
     }
 
     // ------------------------------------------------------------------
