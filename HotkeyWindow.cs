@@ -26,7 +26,7 @@ internal sealed class HotkeyWindow : NativeWindow, IDisposable
 
         if (!RegisterHotKey(Handle, HotkeyId, mods | MOD_NOREPEAT, vk))
         {
-            error = $"Hotkey \"{text}\" ist schon von einem anderen Programm belegt.";
+            error = Loc.T("hotkey.inUse", text);
             return false;
         }
 
@@ -51,7 +51,7 @@ internal sealed class HotkeyWindow : NativeWindow, IDisposable
 
         if (string.IsNullOrWhiteSpace(text))
         {
-            error = "Kein Hotkey angegeben.";
+            error = Loc.T("hotkey.none");
             return false;
         }
 
@@ -83,7 +83,7 @@ internal sealed class HotkeyWindow : NativeWindow, IDisposable
                         key = k;
                     else
                     {
-                        error = $"Unbekannte Taste \"{part}\" im Hotkey.";
+                        error = Loc.T("hotkey.unknownKey", part);
                         return false;
                     }
                     break;
@@ -92,7 +92,7 @@ internal sealed class HotkeyWindow : NativeWindow, IDisposable
 
         if (key == null || mods == 0)
         {
-            error = "Der Hotkey braucht mindestens einen Modifier (Ctrl/Alt/Shift/Win) und eine Taste.";
+            error = Loc.T("hotkey.needModifier");
             return false;
         }
 

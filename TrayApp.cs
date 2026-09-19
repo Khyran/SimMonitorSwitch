@@ -26,12 +26,21 @@ internal sealed class TrayApp : ApplicationContext
 
     private readonly ToolStripMenuItem _statusItem = new("...") { Enabled = false };
     private readonly ToolStripMenuItem _toggleItem = new();
-    private readonly ToolStripMenuItem _onItem = new("Einschalten");
-    private readonly ToolStripMenuItem _offItem = new("Ausschalten");
-    private readonly ToolStripMenuItem _autoItem = new("Automatisch bei Spielstart") { CheckOnClick = true };
-    private readonly ToolStripMenuItem _selectMenu = new("Sim-Monitor auswählen");
-    private readonly ToolStripMenuItem _gamesMenu = new("Laufendes Programm als Spiel hinzufügen");
-    private readonly ToolStripMenuItem _autostartItem = new("Mit Windows starten") { CheckOnClick = true };
+    private readonly ToolStripMenuItem _onItem = new();
+    private readonly ToolStripMenuItem _offItem = new();
+    private readonly ToolStripMenuItem _autoItem = new() { CheckOnClick = true };
+    private readonly ToolStripMenuItem _selectMenu = new();
+    private readonly ToolStripMenuItem _gamesMenu = new();
+    private readonly ToolStripMenuItem _autostartItem = new() { CheckOnClick = true };
+    private readonly ToolStripMenuItem _openCfgItem = new();
+    private readonly ToolStripMenuItem _reloadCfgItem = new();
+    private readonly ToolStripMenuItem _emergencyItem = new();
+    private readonly ToolStripMenuItem _openLogItem = new();
+    private readonly ToolStripMenuItem _exitItem = new();
+    private readonly ToolStripMenuItem _languageMenu = new();
+    private readonly ToolStripMenuItem _langAutoItem = new();
+    private readonly ToolStripMenuItem _langEnItem = new("English");
+    private readonly ToolStripMenuItem _langDeItem = new("Deutsch");
 
     private bool _busy;
     private bool _gameWasRunning;
@@ -40,6 +49,7 @@ internal sealed class TrayApp : ApplicationContext
 
     public TrayApp()
     {
+        Loc.SetLanguage(_cfg.Language);
         _monitor = new MonitorController(_cfg);
         _ = _sync.Handle;   // Handle erzwingen, damit BeginInvoke funktioniert
 
@@ -48,7 +58,7 @@ internal sealed class TrayApp : ApplicationContext
         _tray = new NotifyIcon
         {
             Icon = _iconUnknown,
-            Text = "Sim-Monitor",
+            Text = Loc.T("label.default"),
             ContextMenuStrip = _menu,
             Visible = true,
         };
@@ -67,9 +77,7 @@ internal sealed class TrayApp : ApplicationContext
 
         if (!_monitor.IsConfigured)
         {
-            Notify("Sim-Monitor einrichten",
-                "Rechtsklick auf das Tray-Icon und dort den Sim-Monitor auswählen (er muss dafür gerade eingeschaltet sein).",
-                ToolTipIcon.Info);
+            Notify(Loc.T("notify.setup.title"), Loc.T("notify.setup.body"), ToolTipIcon.Info);
         }
     }
 
@@ -97,29 +105,28 @@ internal sealed class TrayApp : ApplicationContext
         _gamesMenu.DropDownItems.Add("...");
         _gamesMenu.DropDownOpening += (_, _) => FillGamesMenu();
 
-        var openCfg = new ToolStripMenuItem("Konfigurationsdatei öffnen");
-        openCfg.Click += (_, _) => OpenConfigFile();
+        _openCfgItem.Click += (_, _) => OpenConfigFile();
+        _reloadCfgItem.Click += (_, _) => ReloadConfig();
 
-        var reloadCfg = new ToolStripMenuItem("Konfiguration neu laden");
-        reloadCfg.Click += (_, _) => ReloadConfig();
-
-        var emergency = new ToolStripMenuItem("Notfall: Alle Monitore erweitern (wie Win+P)");
-        emergency.Click += async (_, _) =>
+        _emergencyItem.Click += async (_, _) =>
         {
             if (_busy) return;
             _autoEnabled = false;
             var r = await RunAsync(MonitorController.ExtendAll);
-            Notify("Monitore erweitern", r.Message, r.Ok ? ToolTipIcon.Info : ToolTipIcon.Error);
+            Notify(Loc.T("notify.extend"), r.Message, r.Ok ? ToolTipIcon.Info : ToolTipIcon.Error);
         };
 
-        var openLog = new ToolStripMenuItem("Log öffnen");
-        openLog.Click += (_, _) => OpenLogFile();
+        _openLogItem.Click += (_, _) => OpenLogFile();
 
         _autostartItem.Checked = IsAutostartEnabled();
         _autostartItem.Click += (_, _) => SetAutostart(_autostartItem.Checked);
 
-        var exit = new ToolStripMenuItem("Beenden");
-        exit.Click += (_, _) => ExitApp();
+        _exitItem.Click += (_, _) => ExitApp();
+
+        _langAutoItem.Click += (_, _) => SetLanguage(Loc.Auto);
+        _langEnItem.Click += (_, _) => SetLanguage("en");
+        _langDeItem.Click += (_, _) => SetLanguage("de");
+        _languageMenu.DropDownItems.AddRange(new ToolStripItem[] { _langAutoItem, _langEnItem, _langDeItem });
 
         _menu.Items.AddRange(new ToolStripItem[]
         {
@@ -129,13 +136,46 @@ internal sealed class TrayApp : ApplicationContext
             new ToolStripSeparator(),
             _autoItem, _selectMenu, _gamesMenu,
             new ToolStripSeparator(),
-            emergency,
-            openCfg, reloadCfg, openLog, _autostartItem,
+            _emergencyItem,
+            _openCfgItem, _reloadCfgItem, _openLogItem, _autostartItem, _languageMenu,
             new ToolStripSeparator(),
-            exit,
+            _exitItem,
         });
 
+        ApplyTexts();
         _menu.Opening += (_, _) => RefreshUi();
+    }
+
+    /// <summary>Setzt alle Menuetexte in der aktuellen Sprache (auch beim Sprachwechsel zur Laufzeit).</summary>
+    private void ApplyTexts()
+    {
+        _onItem.Text = Loc.T("menu.on");
+        _offItem.Text = Loc.T("menu.off");
+        _autoItem.Text = Loc.T("menu.auto");
+        _selectMenu.Text = Loc.T("menu.select");
+        _gamesMenu.Text = Loc.T("menu.addGame");
+        _emergencyItem.Text = Loc.T("menu.emergency");
+        _openCfgItem.Text = Loc.T("menu.openConfig");
+        _reloadCfgItem.Text = Loc.T("menu.reloadConfig");
+        _openLogItem.Text = Loc.T("menu.openLog");
+        _autostartItem.Text = Loc.T("menu.autostart");
+        _languageMenu.Text = Loc.T("menu.language");
+        _langAutoItem.Text = Loc.T("menu.languageAuto");
+        _exitItem.Text = Loc.T("menu.exit");
+
+        string lang = (_cfg.Language ?? Loc.Auto).Trim().ToLowerInvariant();
+        _langEnItem.Checked = lang == "en";
+        _langDeItem.Checked = lang == "de";
+        _langAutoItem.Checked = !_langEnItem.Checked && !_langDeItem.Checked;
+    }
+
+    private void SetLanguage(string language)
+    {
+        _cfg.Language = language;
+        _cfg.Save();
+        Loc.SetLanguage(language);
+        ApplyTexts();
+        RefreshUi();
     }
 
     private void FillSelectMenu()
@@ -145,14 +185,14 @@ internal sealed class TrayApp : ApplicationContext
         var candidates = MonitorController.Enumerate().Where(m => m.Attached).ToList();
         if (candidates.Count == 0)
         {
-            _selectMenu.DropDownItems.Add(new ToolStripMenuItem("Keine aktiven Monitore gefunden") { Enabled = false });
+            _selectMenu.DropDownItems.Add(new ToolStripMenuItem(Loc.T("select.none")) { Enabled = false });
             return;
         }
 
         foreach (var m in candidates)
         {
             string dev = m.DeviceName.TrimStart('\\', '.');
-            string text = $"{m.Name}  –  {dev}, {DescribeResolution(m.DeviceName)}" + (m.Primary ? "  (Hauptbildschirm)" : "");
+            string text = $"{m.Name}  –  {dev}, {DescribeResolution(m.DeviceName)}" + (m.Primary ? "  " + Loc.T("select.primary") : "");
             var item = new ToolStripMenuItem(text)
             {
                 Checked = string.Equals(m.DeviceName, _cfg.LastDeviceName, StringComparison.OrdinalIgnoreCase),
@@ -162,7 +202,7 @@ internal sealed class TrayApp : ApplicationContext
             item.Click += (_, _) =>
             {
                 var r = _monitor.Select(captured);
-                Notify(r.Ok ? "Sim-Monitor gespeichert" : "Fehler", r.Message,
+                Notify(r.Ok ? Loc.T("notify.saved") : Loc.T("notify.error"), r.Message,
                     r.Ok ? ToolTipIcon.Info : ToolTipIcon.Error);
                 RefreshUi();
             };
@@ -202,7 +242,7 @@ internal sealed class TrayApp : ApplicationContext
 
         if (names.Count == 0)
         {
-            _gamesMenu.DropDownItems.Add(new ToolStripMenuItem("Keine weiteren Programme mit Fenster") { Enabled = false });
+            _gamesMenu.DropDownItems.Add(new ToolStripMenuItem(Loc.T("games.none")) { Enabled = false });
             return;
         }
 
@@ -214,7 +254,7 @@ internal sealed class TrayApp : ApplicationContext
             {
                 _cfg.GameProcesses.Add(captured);
                 _cfg.Save();
-                Notify("Spiel hinzugefügt", $"\"{captured}\" schaltet ab jetzt den Sim-Monitor ein.", ToolTipIcon.Info);
+                Notify(Loc.T("notify.gameAdded"), Loc.T("notify.gameAdded.body", captured), ToolTipIcon.Info);
             };
             _gamesMenu.DropDownItems.Add(item);
         }
@@ -256,13 +296,13 @@ internal sealed class TrayApp : ApplicationContext
         if (_busy) return;
         if (!_monitor.IsConfigured)
         {
-            Notify("Kein Sim-Monitor gewählt", "Bitte zuerst im Menü den Sim-Monitor auswählen.", ToolTipIcon.Warning);
+            Notify(Loc.T("notify.noMonitor.title"), Loc.T("notify.noMonitor.body"), ToolTipIcon.Warning);
             return;
         }
 
         _autoEnabled = false;
         var r = await RunAsync(action);
-        Notify("Sim-Monitor", r.Message, r.Ok ? ToolTipIcon.Info : ToolTipIcon.Error);
+        Notify(Loc.T("notify.simMonitor"), r.Message, r.Ok ? ToolTipIcon.Info : ToolTipIcon.Error);
     }
 
     private async Task ToggleAsync()
@@ -293,7 +333,7 @@ internal sealed class TrayApp : ApplicationContext
             {
                 var r = await RunAsync(_monitor.Enable);
                 if (r.Ok) _autoEnabled = true;
-                Notify("Spiel erkannt", r.Message, r.Ok ? ToolTipIcon.Info : ToolTipIcon.Error);
+                Notify(Loc.T("notify.gameStarted"), r.Message, r.Ok ? ToolTipIcon.Info : ToolTipIcon.Error);
             }
             return;
         }
@@ -311,7 +351,7 @@ internal sealed class TrayApp : ApplicationContext
         {
             _autoEnabled = false;
             var r = await RunAsync(_monitor.Disable);
-            Notify("Spiel beendet", r.Message, r.Ok ? ToolTipIcon.Info : ToolTipIcon.Error);
+            Notify(Loc.T("notify.gameEnded"), r.Message, r.Ok ? ToolTipIcon.Info : ToolTipIcon.Error);
         }
     }
 
@@ -353,16 +393,16 @@ internal sealed class TrayApp : ApplicationContext
 
         _tray.Icon = on switch { true => _iconOn, false => _iconOff, _ => _iconUnknown };
 
-        string label = _cfg.MonitorLabel ?? "Sim-Monitor";
-        string state = !_monitor.IsConfigured ? "nicht eingerichtet"
-                     : on == true ? "AN"
-                     : on == false ? "AUS"
-                     : "nicht gefunden";
+        string label = _cfg.MonitorLabel ?? Loc.T("label.default");
+        string state = !_monitor.IsConfigured ? Loc.T("state.notConfigured")
+                     : on == true ? Loc.T("state.on")
+                     : on == false ? Loc.T("state.off")
+                     : Loc.T("state.notFound");
 
         _statusItem.Text = $"{label}: {state}";
-        _tray.Text = Truncate($"Sim-Monitor: {state}", 63);
+        _tray.Text = Truncate(Loc.T("tray.tooltip", state), 63);
 
-        _toggleItem.Text = $"Umschalten   ({_cfg.Hotkey})";
+        _toggleItem.Text = Loc.T("menu.toggle", _cfg.Hotkey);
         _onItem.Enabled = _monitor.IsConfigured && on != true;
         _offItem.Enabled = _monitor.IsConfigured && on != false;
     }
@@ -381,7 +421,7 @@ internal sealed class TrayApp : ApplicationContext
     private void RegisterHotkey()
     {
         if (!_hotkey.Register(_cfg.Hotkey, out var error))
-            Notify("Hotkey nicht verfügbar", error, ToolTipIcon.Warning);
+            Notify(Loc.T("notify.hotkey"), error, ToolTipIcon.Warning);
     }
 
     private void OpenConfigFile()
@@ -395,7 +435,7 @@ internal sealed class TrayApp : ApplicationContext
         }
         catch (Exception ex)
         {
-            Notify("Fehler", ex.Message, ToolTipIcon.Error);
+            Notify(Loc.T("notify.error"), ex.Message, ToolTipIcon.Error);
         }
     }
 
@@ -404,23 +444,25 @@ internal sealed class TrayApp : ApplicationContext
         try
         {
             if (!File.Exists(Log.FilePath))
-                Log.Write("Log gestartet.");
+                Log.Write("Log started.");
             Process.Start(new ProcessStartInfo("notepad.exe", $"\"{Log.FilePath}\"") { UseShellExecute = true });
         }
         catch (Exception ex)
         {
-            Notify("Fehler", ex.Message, ToolTipIcon.Error);
+            Notify(Loc.T("notify.error"), ex.Message, ToolTipIcon.Error);
         }
     }
 
     private void ReloadConfig()
     {
         _cfg.ApplyFrom(AppConfig.Load());
+        Loc.SetLanguage(_cfg.Language);
+        ApplyTexts();
         _timer.Interval = Math.Max(1, _cfg.PollSeconds) * 1000;
         _autoItem.Checked = _cfg.AutoMode;
         RegisterHotkey();
         RefreshUi();
-        Notify("Konfiguration", "Neu geladen.", ToolTipIcon.Info);
+        Notify(Loc.T("notify.config"), Loc.T("notify.reloaded"), ToolTipIcon.Info);
     }
 
     private static bool IsAutostartEnabled()

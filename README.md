@@ -15,11 +15,17 @@ dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile
 The finished `SimMonitorSwitch.exe` ends up in `bin\Release\net8.0-windows\win-x64\publish\`.
 If the target machine has no .NET runtime installed, use `--self-contained true` instead (the file will be considerably larger).
 
+## Language
+
+The app is available in English and German. By default it follows the Windows display language (German if Windows is set to German, English otherwise). To change it, right-click the tray icon, choose *Language*, and pick *English*, *Deutsch* or *Automatic*. The change applies immediately and is stored in the `Language` field of the config file.
+
+Menu entries are quoted below by their English names. In German they read: *Sim-Monitor auswählen*, *Mit Windows starten*, *Einschalten* / *Ausschalten*, *Automatisch bei Spielstart*, *Laufendes Programm als Spiel hinzufügen*, *Konfigurationsdatei öffnen*, *Konfiguration neu laden*, *Notfall: Alle Monitore erweitern (wie Win+P)*, *Log öffnen*, *Sprache*.
+
 ## First-time setup (one time only)
 
 1. Start `SimMonitorSwitch.exe`. A small monitor icon appears in the tray (the arrow next to the clock).
-2. **The sim monitor must be switched on for this step.** Right-click the icon, choose *Sim-Monitor auswählen* (select sim monitor), and click your sim racing monitor. The app remembers its resolution, refresh rate and position.
-3. Right-click again and tick *Mit Windows starten* (start with Windows).
+2. **The sim monitor must be switched on for this step.** Right-click the icon, choose *Select sim monitor*, and click your sim racing monitor. The app remembers its resolution, refresh rate and position.
+3. Right-click again and tick *Start with Windows*.
 
 The main display cannot be selected, so you can never lock yourself out by accident.
 
@@ -28,9 +34,9 @@ The main display cannot be selected, so you can never lock yourself out by accid
 | Action | How |
 | --- | --- |
 | Toggle | Hotkey `Ctrl+Alt+S` or double-click the tray icon |
-| Explicit on / off | Right-click, then *Einschalten* (enable) or *Ausschalten* (disable) |
-| Automatic mode | *Automatisch bei Spielstart* (automatic on game start) in the menu (default: on) |
-| Add a new game | Start the game, then right-click and choose *Laufendes Programm als Spiel hinzufügen* (add running program as game) |
+| Explicit on / off | Right-click, then *Enable* or *Disable* |
+| Automatic mode | *Automatic on game start* in the menu (default: on) |
+| Add a new game | Start the game, then right-click and choose *Add running program as game* |
 
 Icon colors: filled green = monitor on, gray outline = off, orange outline = not set up or not found.
 
@@ -42,7 +48,7 @@ Icon colors: filled green = monitor on, gray outline = off, orange outline = not
 
 ## Configuration
 
-Use the *Konfigurationsdatei öffnen* (open config file) menu entry. The file is located at `%AppData%\SimMonitorSwitch\config.json`. After saving, choose *Konfiguration neu laden* (reload configuration).
+Use the *Open configuration file* menu entry. The file is located at `%AppData%\SimMonitorSwitch\config.json`. After saving, choose *Reload configuration*.
 
 | Field | Meaning |
 | --- | --- |
@@ -51,12 +57,13 @@ Use the *Konfigurationsdatei öffnen* (open config file) menu entry. The file is
 | `PollSeconds` | How often the app checks for running games (default 2) |
 | `DisableDelaySeconds` | Wait time after the game exits before the monitor is switched off (default 10) |
 | `AutoMode` | Automatic mode on/off |
+| `Language` | `Auto` (default, follows the Windows language), `en` or `de` |
 | `EnableMethod` | `Extend` (default): enables the monitor the same way as `Win+P` → *Extend*. `Legacy`: older method, which may produce a black screen with some graphics drivers. |
 
 ## If the monitor stays black after switching on
 
-1. Right-click the tray icon and choose *Notfall: Alle Monitore erweitern* (emergency: extend all monitors).
-2. Open the log via the *Log öffnen* menu entry. It lists step by step what the app did and which codes Windows returned (`%AppData%\SimMonitorSwitch\log.txt`).
+1. Right-click the tray icon and choose *Emergency: extend all monitors (like Win+P)*.
+2. Open the log via the *Open log* menu entry. It lists step by step what the app did and which codes Windows returned (`%AppData%\SimMonitorSwitch\log.txt`). The log is always in English.
 3. If `EnableMethod` is set to `Extend` and the screen still stays black, try `Legacy` (and vice versa).
 
 ## Safety nets

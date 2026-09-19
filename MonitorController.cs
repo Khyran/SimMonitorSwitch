@@ -113,9 +113,9 @@ internal sealed class MonitorController
     public ActionResult Select(MonitorInfo monitor)
     {
         if (!monitor.Attached)
-            return new(false, "Der Monitor muss dafuer gerade aktiv sein.");
+            return new(false, Loc.T("select.mustBeActive"));
         if (monitor.Primary)
-            return new(false, "Das ist der Hauptbildschirm. Dieser kann nicht ausgeschaltet werden.");
+            return new(false, Loc.T("select.isPrimary"));
 
         _cfg.MonitorId = monitor.MonitorId;
         _cfg.LastDeviceName = monitor.DeviceName;
@@ -123,11 +123,11 @@ internal sealed class MonitorController
 
         var mode = ReadCurrentMode(monitor.DeviceName);
         if (mode == null)
-            return new(false, "Aktuelle Einstellungen des Monitors konnten nicht gelesen werden.");
+            return new(false, Loc.T("select.readFailed"));
 
         _cfg.Mode = mode;
         _cfg.Save();
-        return new(true, $"Sim-Monitor gespeichert: {monitor.Name} ({mode.Width}x{mode.Height} @ {mode.Frequency} Hz).");
+        return new(true, Loc.T("select.ok", monitor.Name, mode.Width, mode.Height, mode.Frequency));
     }
 
     private static SavedMode? ReadCurrentMode(string deviceName)
@@ -156,15 +156,15 @@ internal sealed class MonitorController
     {
         var monitor = FindConfigured();
         if (monitor == null)
-            return new(false, "Sim-Monitor nicht gefunden. Ist er angeschlossen und eingeschaltet?");
+            return new(false, Loc.T("enable.notFound"));
         if (monitor.Attached)
-            return new(true, "Sim-Monitor ist bereits aktiv.");
+            return new(true, Loc.T("enable.already"));
 
         var mode = _cfg.Mode ?? ReadRegistryMode(monitor.DeviceName);
         if (mode == null)
-            return new(false, "Keine gespeicherten Einstellungen. Bitte den Sim-Monitor neu auswaehlen.");
+            return new(false, Loc.T("enable.noMode"));
 
-        Log.Write($"Enable: {monitor.DeviceName}, gespeichert: {Describe(mode)}, Methode: {_cfg.EnableMethod}");
+        Log.Write($"Enable: {monitor.DeviceName}, saved: {Describe(mode)}, method: {_cfg.EnableMethod}");
 
         bool attached = false;
 
@@ -172,7 +172,7 @@ internal sealed class MonitorController
         if (string.Equals(_cfg.EnableMethod, "Extend", StringComparison.OrdinalIgnoreCase))
         {
             var ext = ExtendAll();
-            Log.Write($"Erweitern: {ext.Message}");
+            Log.Write($"Extend: {ext.Message}");
             attached = ext.Ok && WaitFor(monitor, attached: true);
         }
 
@@ -180,27 +180,27 @@ internal sealed class MonitorController
         if (!attached)
         {
             var apply = ApplyMode(monitor.DeviceName, mode);
-            Log.Write($"Legacy-Aktivierung: {apply.Message}");
+            Log.Write($"Legacy activation: {apply.Message}");
             if (!apply.Ok) return apply;
             attached = WaitFor(monitor, attached: true);
         }
 
         if (!attached)
-            return new(false, "Windows hat den Monitor nicht aktiviert (evtl. ausgeschaltet oder Kabel getrennt).");
+            return new(false, Loc.T("enable.failed"));
 
         // Nachpruefen: stimmen Aufloesung, Hz und Position noch mit den gespeicherten Werten?
         Thread.Sleep(500);
         var now = ReadCurrentMode(monitor.DeviceName);
-        Log.Write($"Nach dem Einschalten: {Describe(now)}");
+        Log.Write($"After enabling: {Describe(now)}");
         if (now == null || !SameMode(now, mode))
         {
             var fix = ApplyMode(monitor.DeviceName, mode);
-            Log.Write($"Modus nachgesetzt: {fix.Message}");
+            Log.Write($"Mode re-applied: {fix.Message}");
             now = ReadCurrentMode(monitor.DeviceName) ?? now;
-            Log.Write($"Danach: {Describe(now)}");
+            Log.Write($"Afterwards: {Describe(now)}");
         }
 
-        return new(true, $"Sim-Monitor eingeschaltet ({Describe(now)}).");
+        return new(true, Loc.T("enable.ok", Describe(now)));
     }
 
     /// <summary>Wie Win+P -> Erweitern: alle angeschlossenen Monitore in den Desktop holen.</summary>
@@ -208,8 +208,8 @@ internal sealed class MonitorController
     {
         int rc = SetDisplayConfig(0, IntPtr.Zero, 0, IntPtr.Zero, SDC_APPLY | SDC_TOPOLOGY_EXTEND);
         return rc == 0
-            ? new(true, "Monitore erweitert.")
-            : new(false, $"SetDisplayConfig fehlgeschlagen (Code {rc}).");
+            ? new(true, Loc.T("extend.ok"))
+            : new(false, Loc.T("extend.failed", rc));
     }
 
     private static ActionResult ApplyMode(string deviceName, SavedMode mode)
@@ -230,7 +230,7 @@ internal sealed class MonitorController
         a.X == b.X && a.Y == b.Y && a.Width == b.Width && a.Height == b.Height && a.Frequency == b.Frequency;
 
     private static string Describe(SavedMode? m) =>
-        m == null ? "unbekannt" : $"{m.Width}x{m.Height} @ {m.Frequency} Hz, Position {m.X},{m.Y}";
+        m == null ? Loc.T("mode.unknown") : Loc.T("mode.describe", m.Width, m.Height, m.Frequency, m.X, m.Y);
 
     private static SavedMode? ReadRegistryMode(string deviceName)
     {
@@ -258,18 +258,18 @@ internal sealed class MonitorController
     {
         var monitor = FindConfigured();
         if (monitor == null)
-            return new(false, "Sim-Monitor nicht gefunden.");
+            return new(false, Loc.T("disable.notFound"));
         if (!monitor.Attached)
-            return new(true, "Sim-Monitor ist bereits aus.");
+            return new(true, Loc.T("disable.already"));
 
         // Sicherheitsnetz 1: nie den Hauptbildschirm abschalten
         if (monitor.Primary)
-            return new(false, "Der Sim-Monitor ist gerade der Hauptbildschirm. Abbruch, sonst gaebe es keinen Hauptbildschirm mehr.");
+            return new(false, Loc.T("disable.isPrimary"));
 
         // Sicherheitsnetz 2: mindestens ein anderer Bildschirm muss aktiv bleiben
         int otherActive = Enumerate().Count(m => m.Attached && m.DeviceName != monitor.DeviceName);
         if (otherActive < 1)
-            return new(false, "Es wuerde kein aktiver Bildschirm uebrig bleiben. Abbruch.");
+            return new(false, Loc.T("disable.lastActive"));
 
         // Aktuelle Einstellungen merken, damit beim Einschalten alles wieder passt
         var current = ReadCurrentMode(monitor.DeviceName);
@@ -287,14 +287,14 @@ internal sealed class MonitorController
         dm.dmPelsWidth = 0;
         dm.dmPelsHeight = 0;
 
-        Log.Write($"Disable: {monitor.DeviceName}, gemerkt: {Describe(current)}");
+        Log.Write($"Disable: {monitor.DeviceName}, remembered: {Describe(current)}");
         var apply = ApplyChange(monitor.DeviceName, ref dm);
-        Log.Write($"Disable-Ergebnis: {apply.Message}");
+        Log.Write($"Disable result: {apply.Message}");
         if (!apply.Ok) return apply;
 
         return WaitFor(monitor, attached: false)
-            ? new(true, "Sim-Monitor ausgeschaltet.")
-            : new(false, "Windows hat den Monitor nicht deaktiviert.");
+            ? new(true, Loc.T("disable.ok"))
+            : new(false, Loc.T("disable.failed"));
     }
 
     // ------------------------------------------------------------------
@@ -308,11 +308,11 @@ internal sealed class MonitorController
             CDS_UPDATEREGISTRY | CDS_NORESET, IntPtr.Zero);
         Log.Write($"ChangeDisplaySettingsEx({deviceName}) -> {r}");
         if (r != DISP_CHANGE_SUCCESSFUL)
-            return new(false, $"Windows lehnt die Aenderung ab ({DescribeError(r)}).");
+            return new(false, Loc.T("apply.rejected", DescribeError(r)));
 
         r = ChangeDisplaySettingsExApply(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
         if (r != DISP_CHANGE_SUCCESSFUL && r != DISP_CHANGE_RESTART)
-            return new(false, $"Anwenden fehlgeschlagen ({DescribeError(r)}).");
+            return new(false, Loc.T("apply.failed", DescribeError(r)));
 
         return new(true, "OK");
     }
@@ -340,13 +340,7 @@ internal sealed class MonitorController
 
     private static string DescribeError(int code) => code switch
     {
-        -1 => "DISP_CHANGE_FAILED",
-        -2 => "Modus wird nicht unterstuetzt",
-        -3 => "Registry-Fehler",
-        -4 => "ungueltige Flags",
-        -5 => "ungueltige Parameter",
-        -6 => "Konfiguration nicht aenderbar (evtl. Bildschirm-Einstellungen geoeffnet?)",
-        1 => "Neustart noetig",
-        _ => "Fehlercode " + code,
+        -6 or -5 or -4 or -3 or -2 or -1 or 1 => Loc.T("err." + code),
+        _ => Loc.T("err.other", code),
     };
 }

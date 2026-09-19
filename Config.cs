@@ -50,6 +50,9 @@ public sealed class AppConfig
     /// </summary>
     public string EnableMethod { get; set; } = "Extend";
 
+    /// <summary>Sprache der Oberflaeche: "Auto" (Windows-Sprache), "en" oder "de".</summary>
+    public string Language { get; set; } = Loc.Auto;
+
     /// <summary>Automatische Erkennung beim Spielstart ein/aus.</summary>
     public bool AutoMode { get; set; } = true;
 
