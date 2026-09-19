@@ -12,6 +12,12 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- Ermoeglicht das Kompilieren auch auf Linux/macOS (nur zur Kontrolle) -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <!-- CI setzt APP_VERSION aus dem Git-Tag (v1.2.3 -> 1.2.3), damit Release und Menue uebereinstimmen -->
+  <PropertyGroup Condition="'$(APP_VERSION)' != ''">
+    <Version>$(APP_VERSION)</Version>
   </PropertyGroup>
 
 </Project>

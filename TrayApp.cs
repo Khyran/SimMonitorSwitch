@@ -12,6 +12,14 @@ internal sealed class TrayApp : ApplicationContext
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string RunValue = "SimMonitorSwitch";
 
+    /// <summary>Version aus dem Build, ohne den "+Commit"-Anhang der SDK (z. B. "1.0.0").</summary>
+    private static readonly string AppVersion =
+        (System.Reflection.Assembly.GetExecutingAssembly()
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>()
+            .FirstOrDefault()?.InformationalVersion ?? "?")
+        .Split('+')[0];
+
     private readonly AppConfig _cfg = AppConfig.Load();
     private readonly MonitorController _monitor;
     private readonly NotifyIcon _tray;
@@ -37,6 +45,7 @@ internal sealed class TrayApp : ApplicationContext
     private readonly ToolStripMenuItem _emergencyItem = new();
     private readonly ToolStripMenuItem _openLogItem = new();
     private readonly ToolStripMenuItem _exitItem = new();
+    private readonly ToolStripMenuItem _versionItem = new($"SimMonitorSwitch v{AppVersion}") { Enabled = false };
     private readonly ToolStripMenuItem _languageMenu = new();
     private readonly ToolStripMenuItem _langAutoItem = new();
     private readonly ToolStripMenuItem _langEnItem = new("English");
@@ -139,6 +148,7 @@ internal sealed class TrayApp : ApplicationContext
             _emergencyItem,
             _openCfgItem, _reloadCfgItem, _openLogItem, _autostartItem, _languageMenu,
             new ToolStripSeparator(),
+            _versionItem,
             _exitItem,
         });
 
