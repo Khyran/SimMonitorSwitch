@@ -1,73 +1,73 @@
 # SimMonitorSwitch
 
-Kleine Tray-App für Windows 11, die deinen Simracing-Monitor nur dann aktiviert, wenn du ihn brauchst.
-Im ausgeschalteten Zustand ist der Monitor für Windows nicht mehr Teil des Desktops. Es landen also keine Fenster und keine Maus mehr auf dem Bildschirm, den du gerade nicht siehst.
+A small tray app for Windows 11 that activates your sim racing monitor only when you need it.
+While it is switched off, Windows no longer treats the monitor as part of the desktop, so no windows or mouse pointer end up on a screen you can't see.
 
-## Bauen
+## Building
 
-Voraussetzung: .NET 8 SDK auf dem Simracing-PC (oder einem anderen Windows-PC).
+Requirement: .NET 8 SDK on the sim racing PC (or any other Windows PC).
 
 ```powershell
 cd SimMonitorSwitch
 dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true
 ```
 
-Die fertige `SimMonitorSwitch.exe` liegt danach in `bin\Release\net8.0-windows\win-x64\publish\`.
-Ohne .NET-Runtime auf dem Zielrechner: `--self-contained true` verwenden (die Datei wird dann deutlich grösser).
+The finished `SimMonitorSwitch.exe` ends up in `bin\Release\net8.0-windows\win-x64\publish\`.
+If the target machine has no .NET runtime installed, use `--self-contained true` instead (the file will be considerably larger).
 
-## Erste Einrichtung (einmalig)
+## First-time setup (one time only)
 
-1. `SimMonitorSwitch.exe` starten. Im Tray (Pfeil neben der Uhr) erscheint ein kleines Bildschirm-Symbol.
-2. **Sim-Monitor muss dabei eingeschaltet sein.** Rechtsklick auf das Symbol, dann *Sim-Monitor auswählen* und den Simracing-Monitor anklicken. Die App merkt sich Auflösung, Bildwiederholrate und Position.
-3. Rechtsklick, dann *Mit Windows starten* anhaken.
+1. Start `SimMonitorSwitch.exe`. A small monitor icon appears in the tray (the arrow next to the clock).
+2. **The sim monitor must be switched on for this step.** Right-click the icon, choose *Sim-Monitor auswählen* (select sim monitor), and click your sim racing monitor. The app remembers its resolution, refresh rate and position.
+3. Right-click again and tick *Mit Windows starten* (start with Windows).
 
-Der Hauptbildschirm lässt sich nicht auswählen, damit du dich nie aus Versehen aussperrst.
+The main display cannot be selected, so you can never lock yourself out by accident.
 
-## Bedienung
+## Usage
 
-| Aktion | Wie |
+| Action | How |
 | --- | --- |
-| Umschalten | Hotkey `Ctrl+Alt+S` oder Doppelklick auf das Tray-Symbol |
-| Ein / Aus explizit | Rechtsklick, dann *Einschalten* oder *Ausschalten* |
-| Automatik | *Automatisch bei Spielstart* im Menü (Standard: an) |
-| Neues Spiel eintragen | Spiel starten, dann Rechtsklick, dann *Laufendes Programm als Spiel hinzufügen* |
+| Toggle | Hotkey `Ctrl+Alt+S` or double-click the tray icon |
+| Explicit on / off | Right-click, then *Einschalten* (enable) or *Ausschalten* (disable) |
+| Automatic mode | *Automatisch bei Spielstart* (automatic on game start) in the menu (default: on) |
+| Add a new game | Start the game, then right-click and choose *Laufendes Programm als Spiel hinzufügen* (add running program as game) |
 
-Symbolfarbe: grün gefüllt = Monitor an, grauer Rahmen = aus, oranger Rahmen = nicht eingerichtet oder nicht gefunden.
+Icon colors: filled green = monitor on, gray outline = off, orange outline = not set up or not found.
 
-### So funktioniert die Automatik
+### How automatic mode works
 
-- Startet eines der eingetragenen Spiele, schaltet die App den Sim-Monitor ein.
-- Ist das Spiel seit 10 Sekunden beendet, schaltet sie ihn wieder aus, aber nur, wenn sie ihn selbst eingeschaltet hat.
-- Hast du den Monitor von Hand eingeschaltet (Hotkey), bleibt er an. Manuelle Aktionen haben immer Vorrang.
+- When one of the registered games starts, the app switches the sim monitor on.
+- Once the game has been closed for 10 seconds, the app switches the monitor off again, but only if it was the one that switched it on.
+- If you switched the monitor on manually (hotkey), it stays on. Manual actions always take precedence.
 
-## Konfiguration
+## Configuration
 
-Menü *Konfigurationsdatei öffnen*, Datei liegt unter `%AppData%\SimMonitorSwitch\config.json`. Nach dem Speichern *Konfiguration neu laden* wählen.
+Use the *Konfigurationsdatei öffnen* (open config file) menu entry. The file is located at `%AppData%\SimMonitorSwitch\config.json`. After saving, choose *Konfiguration neu laden* (reload configuration).
 
-| Feld | Bedeutung |
+| Field | Meaning |
 | --- | --- |
-| `GameProcesses` | Prozessnamen ohne `.exe`. Die Vorgabeliste ist aus dem Gedächtnis geschrieben und nicht geprüft, am einfachsten trägst du dein Spiel über das Menü ein. |
-| `Hotkey` | z. B. `Ctrl+Alt+S`, `Ctrl+Shift+F9`, `Win+Alt+M` |
-| `PollSeconds` | Wie oft nach Spielen gesucht wird (Standard 2) |
-| `DisableDelaySeconds` | Wartezeit nach Spielende bis zum Ausschalten (Standard 10) |
-| `AutoMode` | Automatik an/aus |
-| `EnableMethod` | `Extend` (Standard): Monitor wie bei `Win+P` → *Erweitern* einschalten. `Legacy`: ältere Methode, kann auf manchen Grafiktreibern ein schwarzes Bild liefern. |
+| `GameProcesses` | Process names without `.exe`. The default list was written from memory and is unverified; the easiest way is to add your game through the menu. |
+| `Hotkey` | e.g. `Ctrl+Alt+S`, `Ctrl+Shift+F9`, `Win+Alt+M` |
+| `PollSeconds` | How often the app checks for running games (default 2) |
+| `DisableDelaySeconds` | Wait time after the game exits before the monitor is switched off (default 10) |
+| `AutoMode` | Automatic mode on/off |
+| `EnableMethod` | `Extend` (default): enables the monitor the same way as `Win+P` → *Extend*. `Legacy`: older method, which may produce a black screen with some graphics drivers. |
 
-## Wenn der Monitor nach dem Einschalten schwarz bleibt
+## If the monitor stays black after switching on
 
-1. Rechtsklick auf das Tray-Symbol, dann *Notfall: Alle Monitore erweitern*.
-2. Menü *Log öffnen*: Dort steht Schritt für Schritt, was die App gemacht hat und welche Codes Windows zurückgab (`%AppData%\SimMonitorSwitch\log.txt`).
-3. Wenn `EnableMethod` auf `Extend` steht und es trotzdem schwarz bleibt, probiere `Legacy` (und umgekehrt).
+1. Right-click the tray icon and choose *Notfall: Alle Monitore erweitern* (emergency: extend all monitors).
+2. Open the log via the *Log öffnen* menu entry. It lists step by step what the app did and which codes Windows returned (`%AppData%\SimMonitorSwitch\log.txt`).
+3. If `EnableMethod` is set to `Extend` and the screen still stays black, try `Legacy` (and vice versa).
 
-## Sicherheitsnetze
+## Safety nets
 
-- Der Hauptbildschirm wird nie ausgeschaltet.
-- Es wird nie der letzte aktive Bildschirm ausgeschaltet.
-- Wird der Sim-Monitor an einen anderen Anschluss gesteckt, findet ihn die App über seine Hardware-ID wieder. Bei mehreren baugleichen Monitoren dient der Windows-Name (`\\.\DISPLAY3`) als zusätzliche Prüfung.
-- Falls doch einmal etwas hängt: `Win+P`, dann *Erweitern* holt alle angeschlossenen Monitore zurück.
+- The main display is never switched off.
+- The last active display is never switched off.
+- If the sim monitor is plugged into a different port, the app finds it again via its hardware ID. When several identical monitors are connected, the Windows name (`\\.\DISPLAY3`) serves as an additional check.
+- If something does get stuck: press `Win+P`, then choose *Extend* to bring back all connected monitors.
 
-## Gut zu wissen
+## Good to know
 
-- Viele Sims (iRacing, ACC) lesen die Monitor-Liste beim Start. Die App prüft alle 2 Sekunden, das ist meist schnell genug. Erkennt ein Spiel den Monitor trotzdem nicht, schalte ihn vor dem Spielstart per Hotkey ein.
-- Nach dem Einschalten kann es 1 bis 3 Sekunden dauern, bis Windows das Bild aufgebaut hat. Das ist normal.
-- Der Monitor selbst muss eingeschaltet und angeschlossen bleiben. Die App trennt ihn nur in Windows vom Desktop und schaltet ihn nicht physisch aus.
+- Many sims (iRacing, ACC) read the monitor list at startup. The app checks every 2 seconds, which is usually fast enough. If a game still doesn't detect the monitor, switch it on with the hotkey before launching the game.
+- After switching on, it can take 1 to 3 seconds for Windows to bring up the picture. This is normal.
+- The monitor itself must stay powered on and connected. The app only detaches it from the desktop in Windows; it does not switch the monitor off physically.
