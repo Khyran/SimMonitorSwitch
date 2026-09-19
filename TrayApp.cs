@@ -193,7 +193,27 @@ internal sealed class TrayApp : ApplicationContext
         _selectMenu.DropDownItems.Clear();
 
         var candidates = MonitorController.Enumerate().Where(m => m.Attached).ToList();
-        if (candidates.Count == 0)
+
+        // Der gewaehlte Sim-Monitor ist im Moment evtl. aus (nicht mehr am Desktop) und taucht dann
+        // nicht in der Liste auf. Trotzdem anzeigen, damit man sieht, welcher gewaehlt ist.
+        if (_monitor.IsConfigured)
+        {
+            var configured = _monitor.FindConfigured();
+            if (configured == null || !configured.Attached)
+            {
+                string label = _cfg.MonitorLabel ?? configured?.Name ?? Loc.T("label.default");
+                string dev = (configured?.DeviceName ?? _cfg.LastDeviceName ?? "").TrimStart('\\', '.');
+                string res = _cfg.Mode is { } mode ? $"{mode.Width}x{mode.Height}" : "?";
+                string state = Loc.T(configured == null ? "select.missing" : "select.off");
+                _selectMenu.DropDownItems.Add(new ToolStripMenuItem($"{label}  –  {dev}, {res}  {state}")
+                {
+                    Checked = true,
+                    Enabled = false,   // zum Neuwaehlen muss der Monitor an sein
+                });
+            }
+        }
+
+        if (_selectMenu.DropDownItems.Count == 0 && candidates.Count == 0)
         {
             _selectMenu.DropDownItems.Add(new ToolStripMenuItem(Loc.T("select.none")) { Enabled = false });
             return;

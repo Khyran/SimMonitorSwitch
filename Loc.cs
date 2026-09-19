@@ -60,6 +60,8 @@ internal static class Loc
 
         ["select.none"]         = ("No active monitors found", "Keine aktiven Monitore gefunden"),
         ["select.primary"]      = ("(primary display)", "(Hauptbildschirm)"),
+        ["select.off"]          = ("(currently off)", "(gerade aus)"),
+        ["select.missing"]      = ("(not found)", "(nicht gefunden)"),
         ["games.none"]          = ("No other programs with a window", "Keine weiteren Programme mit Fenster"),
 
         // --- Benachrichtigungen -------------------------------------------
