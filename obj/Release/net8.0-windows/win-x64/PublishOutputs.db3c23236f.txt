@@ -1,2 +1,0 @@
-C:\Users\conta\Downloads\_ZIP\SimMonitorSwitch_2\SimMonitorSwitch\bin\Release\net8.0-windows\win-x64\publish\SimMonitorSwitch.pdb
-C:\Users\conta\Downloads\_ZIP\SimMonitorSwitch_2\SimMonitorSwitch\bin\Release\net8.0-windows\win-x64\publish\SimMonitorSwitch.exe
