@@ -29,6 +29,7 @@ internal sealed class TrayApp : ApplicationContext
     private readonly Control _sync = new();   // nur um Aufrufe auf den UI-Thread zu holen
 
     private readonly Icon _iconOn = MakeIcon(Color.FromArgb(46, 204, 113), filled: true);
+    private readonly Icon _iconPartial = MakeIcon(Color.Orange, filled: true);
     private readonly Icon _iconOff = MakeIcon(Color.Gray, filled: false);
     private readonly Icon _iconUnknown = MakeIcon(Color.Orange, filled: false);
 
@@ -192,52 +193,61 @@ internal sealed class TrayApp : ApplicationContext
     {
         _selectMenu.DropDownItems.Clear();
 
+        var resolved = _monitor.ResolveAll();
         var candidates = MonitorController.Enumerate().Where(m => m.Attached).ToList();
 
-        // Der gewaehlte Sim-Monitor ist im Moment evtl. aus (nicht mehr am Desktop) und taucht dann
-        // nicht in der Liste auf. Trotzdem anzeigen, damit man sieht, welcher gewaehlt ist.
-        if (_monitor.IsConfigured)
+        // Sim-Monitore, die gerade aus (nicht am Desktop) oder nicht gefunden sind, fehlen in der Liste der
+        // aktiven Monitore. Trotzdem angehakt anzeigen, damit man sieht, was gewaehlt ist, und sie entfernen kann.
+        foreach (var r in resolved.Where(r => !r.Attached))
         {
-            var configured = _monitor.FindConfigured();
-            if (configured == null || !configured.Attached)
-            {
-                string label = _cfg.MonitorLabel ?? configured?.Name ?? Loc.T("label.default");
-                string dev = (configured?.DeviceName ?? _cfg.LastDeviceName ?? "").TrimStart('\\', '.');
-                string res = _cfg.Mode is { } mode ? $"{mode.Width}x{mode.Height}" : "?";
-                string state = Loc.T(configured == null ? "select.missing" : "select.off");
-                _selectMenu.DropDownItems.Add(new ToolStripMenuItem($"{label}  –  {dev}, {res}  {state}")
-                {
-                    Checked = true,
-                    Enabled = false,   // zum Neuwaehlen muss der Monitor an sein
-                });
-            }
-        }
-
-        if (_selectMenu.DropDownItems.Count == 0 && candidates.Count == 0)
-        {
-            _selectMenu.DropDownItems.Add(new ToolStripMenuItem(Loc.T("select.none")) { Enabled = false });
-            return;
+            var entry = r.Entry;
+            string label = entry.Label ?? r.Info?.Name ?? Loc.T("label.default");
+            string dev = (r.Info?.DeviceName ?? entry.LastDeviceName ?? "").TrimStart('\\', '.');
+            string res = entry.Mode is { } mode ? $"{mode.Width}x{mode.Height}" : "?";
+            string state = Loc.T(r.Found ? "select.off" : "select.missing");
+            var item = new ToolStripMenuItem($"{label}  –  {dev}, {res}  {state}") { Checked = true };
+            item.Click += (_, _) => RemoveSimMonitor(entry);
+            _selectMenu.DropDownItems.Add(item);
         }
 
         foreach (var m in candidates)
         {
+            var entry = resolved.FirstOrDefault(r =>
+                string.Equals(r.Info?.DeviceName, m.DeviceName, StringComparison.OrdinalIgnoreCase))?.Entry;
+
             string dev = m.DeviceName.TrimStart('\\', '.');
             string text = $"{m.Name}  –  {dev}, {DescribeResolution(m.DeviceName)}" + (m.Primary ? "  " + Loc.T("select.primary") : "");
             var item = new ToolStripMenuItem(text)
             {
-                Checked = string.Equals(m.DeviceName, _cfg.LastDeviceName, StringComparison.OrdinalIgnoreCase),
-                Enabled = !m.Primary,   // Hauptbildschirm darf nie abgeschaltet werden
+                Checked = entry != null,
+                Enabled = entry != null || !m.Primary,   // Hauptbildschirm darf nie als Sim-Monitor dienen
             };
             var captured = m;
             item.Click += (_, _) =>
             {
-                var r = _monitor.Select(captured);
-                Notify(r.Ok ? Loc.T("notify.saved") : Loc.T("notify.error"), r.Message,
-                    r.Ok ? ToolTipIcon.Info : ToolTipIcon.Error);
-                RefreshUi();
+                if (entry != null) RemoveSimMonitor(entry);
+                else AddSimMonitor(captured);
             };
             _selectMenu.DropDownItems.Add(item);
         }
+
+        if (_selectMenu.DropDownItems.Count == 0)
+            _selectMenu.DropDownItems.Add(new ToolStripMenuItem(Loc.T("select.none")) { Enabled = false });
+    }
+
+    private void AddSimMonitor(MonitorInfo monitor)
+    {
+        var r = _monitor.Add(monitor);
+        Notify(r.Ok ? Loc.T("notify.added") : Loc.T("notify.error"), r.Message,
+            r.Ok ? ToolTipIcon.Info : ToolTipIcon.Error);
+        RefreshUi();
+    }
+
+    private void RemoveSimMonitor(SimMonitorEntry entry)
+    {
+        var r = _monitor.Remove(entry);
+        Notify(Loc.T("notify.removed"), r.Message, ToolTipIcon.Info);
+        RefreshUi();
     }
 
     private void FillGamesMenu()
@@ -338,8 +348,8 @@ internal sealed class TrayApp : ApplicationContext
     private async Task ToggleAsync()
     {
         if (_busy) return;
-        bool? enabled = _monitor.IsEnabled();
-        await ManualAsync(enabled == true ? _monitor.Disable : _monitor.Enable);
+        // Nur wenn alle gefundenen Sim-Monitore an sind, wird ausgeschaltet. Sonst (aus oder teilweise an) alle einschalten.
+        await ManualAsync(_monitor.GetStatus().AllFoundOn ? _monitor.Disable : _monitor.Enable);
     }
 
     // ------------------------------------------------------------------
@@ -359,7 +369,7 @@ internal sealed class TrayApp : ApplicationContext
             if (_gameWasRunning) return;
 
             _gameWasRunning = true;
-            if (_monitor.IsEnabled() == false)
+            if (_monitor.GetStatus().AnyFoundOff)
             {
                 var r = await RunAsync(_monitor.Enable);
                 if (r.Ok) _autoEnabled = true;
@@ -419,22 +429,28 @@ internal sealed class TrayApp : ApplicationContext
 
     private void RefreshUi()
     {
-        bool? on = _monitor.IsConfigured ? _monitor.IsEnabled() : null;
+        var s = _monitor.IsConfigured ? _monitor.GetStatus() : new MonitorStatus(0, 0, 0);
 
-        _tray.Icon = on switch { true => _iconOn, false => _iconOff, _ => _iconUnknown };
+        string state;
+        Icon icon;
+        if (s.Total == 0)          { state = Loc.T("state.notConfigured"); icon = _iconUnknown; }
+        else if (s.Found == 0)     { state = Loc.T("state.notFound");      icon = _iconUnknown; }
+        else if (s.Attached == 0)  { state = Loc.T("state.off");           icon = _iconOff; }
+        else if (s.Attached == s.Total) { state = Loc.T("state.on");       icon = _iconOn; }
+        else                       { state = Loc.T("state.partial", s.Attached, s.Total); icon = _iconPartial; }
 
-        string label = _cfg.MonitorLabel ?? Loc.T("label.default");
-        string state = !_monitor.IsConfigured ? Loc.T("state.notConfigured")
-                     : on == true ? Loc.T("state.on")
-                     : on == false ? Loc.T("state.off")
-                     : Loc.T("state.notFound");
+        _tray.Icon = icon;
+
+        string label = s.Total > 1 ? Loc.T("label.multiple", s.Total)
+                     : _cfg.SimMonitors.FirstOrDefault()?.Label ?? Loc.T("label.default");
+        string tip = Loc.T(s.Total > 1 ? "label.multipleShort" : "label.default");
 
         _statusItem.Text = $"{label}: {state}";
-        _tray.Text = Truncate(Loc.T("tray.tooltip", state), 63);
+        _tray.Text = Truncate($"{tip}: {state}", 63);
 
         _toggleItem.Text = Loc.T("menu.toggle", _cfg.Hotkey);
-        _onItem.Enabled = _monitor.IsConfigured && on != true;
-        _offItem.Enabled = _monitor.IsConfigured && on != false;
+        _onItem.Enabled = s.Total > 0 && !s.AllFoundOn;
+        _offItem.Enabled = s.Total > 0 && !(s.Found > 0 && s.Attached == 0);
     }
 
     private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max];
