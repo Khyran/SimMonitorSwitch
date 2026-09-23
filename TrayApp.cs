@@ -129,6 +129,9 @@ internal sealed class TrayApp : ApplicationContext
         _openLogItem.Click += (_, _) => OpenLogFile();
 
         _autostartItem.Checked = IsAutostartEnabled();
+        // Exe verschoben/neu gebaut? Eintrag auf den aktuellen Pfad nachziehen,
+        // sonst startet Windows eine nicht mehr existierende Datei.
+        if (_autostartItem.Checked) SetAutostart(true);
         _autostartItem.Click += (_, _) => SetAutostart(_autostartItem.Checked);
 
         _exitItem.Click += (_, _) => ExitApp();
