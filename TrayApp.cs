@@ -516,13 +516,14 @@ internal sealed class TrayApp : ApplicationContext
         catch (Exception ex)
         {
             Log.Write($"Update check failed: {ex.Message}");
-            if (manual) Notify(Loc.T("notify.error"), Loc.T("update.checkFailed", ex.Message), ToolTipIcon.Error);
+            if (manual) ShowMessage(Loc.T("update.checkFailed", ex.Message), MessageBoxIcon.Error);
             return;
         }
 
         if (update == null)
         {
-            if (manual) Notify(Loc.T("update.title"), Loc.T("update.none", AppVersion), ToolTipIcon.Info);
+            Log.Write($"Update check: v{AppVersion} is up to date (manual check: {manual})");
+            if (manual) ShowMessage(Loc.T("update.none", AppVersion), MessageBoxIcon.Information);
             return;
         }
 
@@ -542,6 +543,16 @@ internal sealed class TrayApp : ApplicationContext
             Notify(Loc.T("update.title"), Loc.T("update.available", update.Tag, AppVersion), ToolTipIcon.Info,
                 onClick: () => _ = InstallUpdateAsync());
         }
+    }
+
+    /// <summary>
+    /// Antwort auf eine selbst angestossene Aktion. Als Dialog statt Benachrichtigung, weil Windows Benachrichtigungen
+    /// unterdrueckt (z. B. bei "Nicht stoeren") und man sonst keine Rueckmeldung sieht.
+    /// </summary>
+    private static void ShowMessage(string text, MessageBoxIcon icon)
+    {
+        MessageBox.Show(text, Loc.T("update.title"), MessageBoxButtons.OK, icon,
+            MessageBoxDefaultButton.Button1, MessageBoxOptions.DefaultDesktopOnly);
     }
 
     private async Task InstallUpdateAsync()
