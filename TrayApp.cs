@@ -79,6 +79,8 @@ internal sealed class TrayApp : ApplicationContext
             Visible = true,
         };
         _tray.DoubleClick += (_, _) => _ = ToggleAsync();
+        // Unter Windows 11 kommt der Klick auf eine Benachrichtigung nicht immer an. Nur als Abkuerzung verwenden,
+        // alles muss auch ueber das Menue gehen.
         _tray.BalloonTipClicked += (_, _) =>
         {
             var action = _balloonAction;
@@ -527,11 +529,16 @@ internal sealed class TrayApp : ApplicationContext
         _update = update;
         _updateItem.Text = Loc.T("menu.installUpdate", update.Tag);
         _updateItem.Visible = true;
+        Log.Write($"Update available: {update.Tag} (manual check: {manual})");
 
-        if (manual || _notifiedUpdateTag != update.Tag)
+        if (manual)
+        {
+            // Selbst angestossen: gleich fragen, statt auf einen Klick auf die Benachrichtigung zu hoffen
+            await InstallUpdateAsync();
+        }
+        else if (_notifiedUpdateTag != update.Tag)
         {
             _notifiedUpdateTag = update.Tag;
-            Log.Write($"Update available: {update.Tag}");
             Notify(Loc.T("update.title"), Loc.T("update.available", update.Tag, AppVersion), ToolTipIcon.Info,
                 onClick: () => _ = InstallUpdateAsync());
         }
@@ -539,12 +546,18 @@ internal sealed class TrayApp : ApplicationContext
 
     private async Task InstallUpdateAsync()
     {
+        Log.Write($"Update: install requested (busy: {_busy}, update: {_update?.Tag ?? "none"})");
         if (_busy || _update == null) return;
 
+        // DefaultDesktopOnly: eine Tray-App hat kein eigenes Fenster, so erscheint die Frage trotzdem im Vordergrund
         var answer = MessageBox.Show(Loc.T("update.confirm", _update.Tag), Loc.T("update.title"),
             MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button1,
             MessageBoxOptions.DefaultDesktopOnly);
-        if (answer != DialogResult.Yes) return;
+        if (answer != DialogResult.Yes)
+        {
+            Log.Write("Update: cancelled by user");
+            return;
+        }
 
         _busy = true;
         try

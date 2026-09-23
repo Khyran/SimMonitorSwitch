@@ -68,8 +68,8 @@ internal static class Loc
 
         // --- Updates ------------------------------------------------------
         ["update.title"]        = ("Update", "Update"),
-        ["update.available"]    = ("Version {0} is available (installed: v{1}). Click here or use the menu to install it.",
-                                   "Version {0} ist verfügbar (installiert: v{1}). Zum Installieren hier klicken oder das Menü verwenden."),
+        ["update.available"]    = ("Version {0} is available (installed: v{1}). To install it, right-click the tray icon and choose \"Install update\".",
+                                   "Version {0} ist verfügbar (installiert: v{1}). Zum Installieren Rechtsklick auf das Tray-Icon und \"Update installieren\" wählen."),
         ["update.none"]         = ("You are using the latest version (v{0}).", "Du hast die neueste Version (v{0})."),
         ["update.checkFailed"]  = ("Could not check for updates: {0}", "Suche nach Updates fehlgeschlagen: {0}"),
         ["update.confirm"]      = ("Install version {0} now?\n\nThe app downloads the new version and restarts. This only takes a few seconds.",
