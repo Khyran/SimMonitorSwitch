@@ -19,7 +19,7 @@ If the target machine has no .NET runtime installed, use `--self-contained true`
 
 The app is available in English and German. By default it follows the Windows display language (German if Windows is set to German, English otherwise). To change it, right-click the tray icon, choose *Language*, and pick *English*, *Deutsch* or *Automatic*. The change applies immediately and is stored in the `Language` field of the config file.
 
-Menu entries are quoted below by their English names. In German they read: *Sim-Monitore auswählen*, *Mit Windows starten*, *Einschalten* / *Ausschalten*, *Automatisch bei Spielstart*, *Laufendes Programm als Spiel hinzufügen*, *Konfigurationsdatei öffnen*, *Konfiguration neu laden*, *Notfall: Alle Monitore erweitern (wie Win+P)*, *Log öffnen*, *Sprache*.
+Menu entries are quoted below by their English names. In German they read: *Sim-Monitore auswählen*, *Mit Windows starten*, *Einschalten* / *Ausschalten*, *Automatisch bei Spielstart*, *Laufendes Programm als Spiel hinzufügen*, *Konfigurationsdatei öffnen*, *Konfiguration neu laden*, *Notfall: Alle Monitore erweitern (wie Win+P)*, *Log öffnen*, *Sprache*, *Nach Updates suchen*, *Update vX.Y.Z installieren*.
 
 ## First-time setup (one time only)
 
@@ -52,6 +52,12 @@ With several sim monitors, *Toggle* switches them all off if every connected one
 - Once the game has been closed for 10 seconds, the app switches them off again, but only if it was the one that switched them on.
 - If you switched the monitors on manually (hotkey), they stay on. Manual actions always take precedence.
 
+## Updates
+
+The app checks GitHub for a new release 30 seconds after it starts and then every 6 hours. When there is one, you get a notification and an *Install update vX.Y.Z* entry at the top of the menu. Click either one and confirm. The app downloads the new version, replaces its own `.exe` in place and restarts. *Start with Windows* keeps working because the file path stays the same. You can also check by hand with *Check for updates*.
+
+The app needs write access to its own folder for this. If it doesn't have it (for example under `C:\Program Files`), it tells you and links to the download page instead.
+
 ## Configuration
 
 Use the *Open configuration file* menu entry. The file is located at `%AppData%\SimMonitorSwitch\config.json`. After saving, choose *Reload configuration*.
@@ -65,6 +71,7 @@ Use the *Open configuration file* menu entry. The file is located at `%AppData%\
 | `DisableDelaySeconds` | Wait time after the game exits before the monitors are switched off (default 10) |
 | `AutoMode` | Automatic mode on/off |
 | `Language` | `Auto` (default, follows the Windows language), `en` or `de` |
+| `CheckForUpdates` | Check GitHub for new versions automatically (default `true`). *Check for updates* in the menu works either way. |
 | `EnableMethod` | `Extend` (default): enables the monitor the same way as `Win+P` → *Extend*. `Legacy`: older method, which may produce a black screen with some graphics drivers. |
 
 ## If the monitor stays black after switching on

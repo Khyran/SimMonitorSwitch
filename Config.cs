@@ -86,6 +86,9 @@ public sealed class AppConfig
     /// <summary>Wartezeit (Sekunden) nach Spielende, bevor der Monitor wieder ausgeht.</summary>
     public int DisableDelaySeconds { get; set; } = 10;
 
+    /// <summary>Regelmaessig auf GitHub nach einer neuen Version suchen.</summary>
+    public bool CheckForUpdates { get; set; } = true;
+
     // ------------------------------------------------------------------
 
     [JsonIgnore]

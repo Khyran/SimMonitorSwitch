@@ -47,6 +47,9 @@ internal sealed class TrayApp : ApplicationContext
     private readonly ToolStripMenuItem _openLogItem = new();
     private readonly ToolStripMenuItem _exitItem = new();
     private readonly ToolStripMenuItem _versionItem = new($"SimMonitorSwitch v{AppVersion}") { Enabled = false };
+    private readonly ToolStripMenuItem _updateItem = new() { Visible = false, Font = new Font(SystemFonts.MenuFont!, FontStyle.Bold) };
+    private readonly ToolStripMenuItem _checkUpdateItem = new();
+    private readonly System.Windows.Forms.Timer _updateTimer = new();
     private readonly ToolStripMenuItem _languageMenu = new();
     private readonly ToolStripMenuItem _langAutoItem = new();
     private readonly ToolStripMenuItem _langEnItem = new("English");
@@ -56,8 +59,11 @@ internal sealed class TrayApp : ApplicationContext
     private bool _gameWasRunning;
     private bool _autoEnabled;          // Hat die Automatik den Monitor eingeschaltet? Nur dann schaltet sie ihn auch wieder aus.
     private DateTime? _gameGoneSince;
+    private UpdateInfo? _update;
+    private string? _notifiedUpdateTag;  // pro Version nur einmal automatisch benachrichtigen
+    private Action? _balloonAction;      // was ein Klick auf die aktuelle Benachrichtigung ausloest
 
-    public TrayApp()
+    public TrayApp(bool afterUpdate = false)
     {
         Loc.SetLanguage(_cfg.Language);
         _monitor = new MonitorController(_cfg);
@@ -73,6 +79,12 @@ internal sealed class TrayApp : ApplicationContext
             Visible = true,
         };
         _tray.DoubleClick += (_, _) => _ = ToggleAsync();
+        _tray.BalloonTipClicked += (_, _) =>
+        {
+            var action = _balloonAction;
+            _balloonAction = null;
+            action?.Invoke();
+        };
 
         _hotkey.Pressed += () => _ = ToggleAsync();
         RegisterHotkey();
@@ -83,9 +95,22 @@ internal sealed class TrayApp : ApplicationContext
         _timer.Tick += OnTick;
         _timer.Start();
 
+        // Erste Pruefung kurz nach dem Start (Netzwerk ist nach dem Anmelden evtl. noch nicht da), dann alle 6 Stunden
+        _updateTimer.Interval = 30_000;
+        _updateTimer.Tick += async (_, _) =>
+        {
+            _updateTimer.Interval = 6 * 60 * 60 * 1000;
+            await CheckForUpdatesAsync(manual: false);
+        };
+        _updateTimer.Start();
+
         RefreshUi();
 
-        if (!_monitor.IsConfigured)
+        if (afterUpdate)
+        {
+            Notify(Loc.T("update.doneTitle"), Loc.T("update.done", AppVersion), ToolTipIcon.Info);
+        }
+        else if (!_monitor.IsConfigured)
         {
             Notify(Loc.T("notify.setup.title"), Loc.T("notify.setup.body"), ToolTipIcon.Info);
         }
@@ -134,6 +159,9 @@ internal sealed class TrayApp : ApplicationContext
         if (_autostartItem.Checked) SetAutostart(true);
         _autostartItem.Click += (_, _) => SetAutostart(_autostartItem.Checked);
 
+        _updateItem.Click += async (_, _) => await InstallUpdateAsync();
+        _checkUpdateItem.Click += async (_, _) => await CheckForUpdatesAsync(manual: true);
+
         _exitItem.Click += (_, _) => ExitApp();
 
         _langAutoItem.Click += (_, _) => SetLanguage(Loc.Auto);
@@ -143,6 +171,7 @@ internal sealed class TrayApp : ApplicationContext
 
         _menu.Items.AddRange(new ToolStripItem[]
         {
+            _updateItem,
             _statusItem,
             new ToolStripSeparator(),
             _toggleItem, _onItem, _offItem,
@@ -153,6 +182,7 @@ internal sealed class TrayApp : ApplicationContext
             _openCfgItem, _reloadCfgItem, _openLogItem, _autostartItem, _languageMenu,
             new ToolStripSeparator(),
             _versionItem,
+            _checkUpdateItem,
             _exitItem,
         });
 
@@ -176,6 +206,8 @@ internal sealed class TrayApp : ApplicationContext
         _languageMenu.Text = Loc.T("menu.language");
         _langAutoItem.Text = Loc.T("menu.languageAuto");
         _exitItem.Text = Loc.T("menu.exit");
+        _checkUpdateItem.Text = Loc.T("menu.checkUpdate");
+        if (_update != null) _updateItem.Text = Loc.T("menu.installUpdate", _update.Tag);
 
         string lang = (_cfg.Language ?? Loc.Auto).Trim().ToLowerInvariant();
         _langEnItem.Checked = lang == "en";
@@ -460,9 +492,86 @@ internal sealed class TrayApp : ApplicationContext
 
     private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max];
 
-    private void Notify(string title, string text, ToolTipIcon icon)
+    private void Notify(string title, string text, ToolTipIcon icon, Action? onClick = null)
     {
+        _balloonAction = onClick;
         _tray.ShowBalloonTip(3000, title, text, icon);
+    }
+
+    // ------------------------------------------------------------------
+    // Updates
+    // ------------------------------------------------------------------
+
+    private async Task CheckForUpdatesAsync(bool manual)
+    {
+        if (!manual && !_cfg.CheckForUpdates) return;
+
+        UpdateInfo? update;
+        try
+        {
+            update = await Updater.CheckAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Write($"Update check failed: {ex.Message}");
+            if (manual) Notify(Loc.T("notify.error"), Loc.T("update.checkFailed", ex.Message), ToolTipIcon.Error);
+            return;
+        }
+
+        if (update == null)
+        {
+            if (manual) Notify(Loc.T("update.title"), Loc.T("update.none", AppVersion), ToolTipIcon.Info);
+            return;
+        }
+
+        _update = update;
+        _updateItem.Text = Loc.T("menu.installUpdate", update.Tag);
+        _updateItem.Visible = true;
+
+        if (manual || _notifiedUpdateTag != update.Tag)
+        {
+            _notifiedUpdateTag = update.Tag;
+            Log.Write($"Update available: {update.Tag}");
+            Notify(Loc.T("update.title"), Loc.T("update.available", update.Tag, AppVersion), ToolTipIcon.Info,
+                onClick: () => _ = InstallUpdateAsync());
+        }
+    }
+
+    private async Task InstallUpdateAsync()
+    {
+        if (_busy || _update == null) return;
+
+        var answer = MessageBox.Show(Loc.T("update.confirm", _update.Tag), Loc.T("update.title"),
+            MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button1,
+            MessageBoxOptions.DefaultDesktopOnly);
+        if (answer != DialogResult.Yes) return;
+
+        _busy = true;
+        try
+        {
+            Notify(Loc.T("update.title"), Loc.T("update.downloading", _update.Tag), ToolTipIcon.Info);
+            await Updater.InstallAsync(_update);
+            ExitApp();   // die neue Version ist gestartet und wartet, bis diese Instanz beendet ist
+        }
+        catch (Exception ex)
+        {
+            Log.Write($"Update failed: {ex}");
+            _busy = false;
+            Notify(Loc.T("notify.error"), Loc.T("update.failed", ex.Message), ToolTipIcon.Error,
+                onClick: () => OpenUrl(Updater.ReleasesUrl));
+        }
+    }
+
+    private void OpenUrl(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            Notify(Loc.T("notify.error"), ex.Message, ToolTipIcon.Error);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -540,6 +649,7 @@ internal sealed class TrayApp : ApplicationContext
     private void ExitApp()
     {
         _timer.Stop();
+        _updateTimer.Stop();
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         _hotkey.Dispose();
         _tray.Visible = false;
